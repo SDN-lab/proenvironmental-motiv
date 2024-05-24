@@ -1,0 +1,2830 @@
+---
+title: "Main_analysis"
+author: "Jo Cutler & Sebastian Contreras-Huerta"
+date: "03/08/2023"
+output: 
+  html_document:
+    keep_md: true
+---
+
+# Methods
+
+```{css, echo=FALSE, eval=FALSE}
+img {
+max-width:150%;
+height: auto;
+}
+```
+
+## Set up and functions
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+options(digits = 4)
+
+# load required packages and functions
+
+require(pacman)
+pacman::p_load(afex,
+               BayesFactor,
+               car,
+               cowplot,
+               effectsize,
+               emmeans,
+               ggeffects,
+               ggforce,
+               ggpubr,
+               ggtext,
+               GPArotation, 
+               Hmisc,
+               irr,
+               kableExtra,
+               lavaan,
+               lemon,
+               lme4, 
+               lmerTest,
+               magrittr,
+               mediation,
+               ordinal,
+               parameters, 
+               parallel,
+               performance,
+               ppcor,
+               psych,
+               Rmisc,
+               robustbase,
+               scales,
+               sjPlot,
+               splines,
+               see,
+               tidyverse
+)
+
+
+### Function to format p values taken from https://stackoverflow.com/questions/23018256/printing-p-values-with-0-001
+
+## version without = sign
+
+pvalr <- function(pvals, sig.limit = .001, digits = 3, html = FALSE) {
+  
+  roundr <- function(x, digits = 1) {
+    res <- sprintf(paste0('%.', digits, 'f'), x)
+    zzz <- paste0('0.', paste(rep('0', digits), collapse = ''))
+    res[res == paste0('-', zzz)] <- zzz
+    res
+  }
+  
+  sapply(pvals, function(x, sig.limit) {
+    if (is.na(x))
+      return(NA)
+    if (x < sig.limit)
+      if (html)
+        return(sprintf('&lt; %s', format(sig.limit))) else
+          return(sprintf('<%s', format(sig.limit)))
+    
+    if (x > .1) {
+      return(roundr(x, digits = 2))} 
+    else if (x > 0.04905 & x < 0.0505) {
+      return(roundr(x, digits = digits + 1))} 
+    else {
+      return(roundr(x, digits = digits))}
+    
+  }, sig.limit = sig.limit)
+}
+
+## version with sign
+
+pvalrf <- function(pvals, sig.limit = .001, digits = 3, html = FALSE) {
+  
+  roundr <- function(x, digits = 1) {
+    res <- sprintf(paste0('%.', digits, 'f'), x)
+    zzz <- paste0('0.', paste(rep('0', digits), collapse = ''))
+    res[res == paste0('-', zzz)] <- zzz
+    res
+  }
+  
+  sapply(pvals, function(x, sig.limit) {
+    if (x < sig.limit){
+      if (html) {return(sprintf('&lt; %s', format(sig.limit)))
+      } else {return(sprintf('<%s', format(sig.limit)))}
+    }
+    if (x > .1){
+      if (html) {return(sprintf('&equals;%s', format(roundr(x, digits = 2)))) 
+      } else {return(sprintf('=%s', format(roundr(x, digits = 2))))}
+    } else if (x > 0.04905 & x < 0.0505) {
+      if (html) {return(sprintf('&equals;%s', format(roundr(x, digits = digits + 1))))
+      } else {return(sprintf('=%s', format(roundr(x, digits = digits + 1))))}
+    } else {
+      if (html) {return(sprintf('&equals;%s', format(roundr(x, digits = digits))))
+      } else {return(sprintf('=%s', format(roundr(x, digits = digits))))}
+    }
+  }, sig.limit = sig.limit)
+}
+
+numcl = detectCores()
+
+```
+
+```{r settings, include=FALSE}
+
+colours <- c("#0c344a",  # blue
+    "#C3A200",  # orange
+    "#009E73",  # green
+    "#F0E442",  # yellow
+    "#CC79A7",  # pink
+    "#6bcaff",  # light blue
+    "#B44900",  # red-orange
+    "#CC6633",  # brown
+    "#999999",  # gray
+    "#A8C8E4",  # pale blue
+    "#CCB974",  # tan
+    "#64B5CD")  # dark blue
+
+colournames <- c('SystemJust', 'SciConsens', 'CollectAction', 'Control', 'NegativeEmotions', 'Letter2Future', 'PluralIgnorance', 'PsychDistance', 
+              'FutureSelfCont', 'Identity-Social-Norms-Intervention', 'BindingMoral', 'DynamicNorm')
+
+colours <- tibble(colours = colours, intername = colournames)
+
+## settings
+
+axtext <- 16
+axtitle <- 20
+
+# whether to write csv files of results & save plot files
+
+writecsvs <- 0
+saveplots <- 0
+
+agent.lims = c("Food", "Climate")
+agent.fills = c("slateblue4", "darkseagreen4")
+agent.cols = c("slateblue4", "darkseagreen4")
+agent.lines = c("dashed", "solid")
+
+paper.theme = list(theme(panel.background = element_rect(fill='transparent'),
+                         panel.grid.minor = element_line(color='transparent'),
+                         axis.line = element_line(color='black'),
+                         axis.text=element_text(size = axtext),
+                         axis.title.x=element_text(size = axtitle),
+                         axis.title.y=element_markdown(size = axtitle),
+                         plot.title = element_markdown(size = axtitle, face = "bold", hjust = 0.5),
+                         strip.text=element_text(size = axtext, face = "bold"),
+                         legend.title=element_text(size = axtext, colour = 'black', hjust = 0),
+                         legend.text=element_text(size = axtitle, colour = 'black'),
+                         legend.key = element_rect(color = NA),
+                         legend.spacing.x = unit(0.25,'cm'),
+                         legend.spacing.y = unit(1,'cm'),
+                         legend.key.height = unit(1,'cm'),
+                         legend.key.width = unit(1,'cm')))
+
+choice.lab <- "Choices to work"
+k.lab <- "Effort discounting"
+k.lab <- 'Motivation (*\u039A*)'
+k.symbol <- '*\u039A*'
+beta.lab <- "Decision<br>stochasticity (*\u03B2*)"
+wept.lab <- "WEPT"
+wept.lab.br <- "WEPT tree<br>planting"
+belief.lab <- "Belief"
+policy.lab <- "Policy support"
+ami.lab <- "Apathy"
+nasa.lab <- "Subjective effort"
+models <- c('2<i>\u039A</i>1<i>\u03B2</i> p', '2<i>\u039A</i>1<i>\u03B2</i> l', '2<i>\u039A</i>1<i>\u03B2</i> h',
+            '2<i>\u039A</i>2<i>\u03B2</i> p', '2<i>\u039A</i>2<i>\u03B2</i> l', '2<i>\u039A</i>2<i>\u03B2</i> h')
+
+sig.order <- c("PD","SJ","NE", "PI", "FSC")
+sig.names <- c("PsychDistance", "SystemJust", "NegativeEmotions", "PluralIgnorance", "FutureSelfCont")
+
+choice.label <- ggplot() +
+  geom_textbox(mapping = aes(0.85, 0.25,
+                             label = "<span style='font-size:14pt'>← <i>Rest more</i><span>", text.color = "black", orientation = "left-rotated",
+                             box.color = "transparent", hjust = 0, vjust = 0.5, halign = 0), width = unit(0.47, "npc")) +
+  geom_textbox(mapping = aes(0.85, 0.85,
+                             label = "<span style='font-size:14pt'><i>Work more</i> →<span>", text.color = "black", orientation = "left-rotated",
+                             box.color = "transparent", hjust = 0.9, vjust = 0.5, halign = 1), width = unit(0.47, "npc")) +
+  xlim(0, 1) +
+  theme_classic() +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title.x = element_blank(),
+        axis.line.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.line.y = element_blank())
+
+choice.label.high <- cowplot::plot_grid(choice.label, NA, nrow = 2, rel_heights = c(1,0.1))
+
+k.label <- ggplot() +
+  geom_textbox(mapping = aes(0.85, 0.25,
+                             label = "<span style='font-size:14pt'>← <i>Discount more</i><span>", text.color = "black", orientation = "left-rotated",
+                             box.color = "transparent", hjust = 0, vjust = 0.5, halign = 0), width = unit(0.47, "npc")) +
+  geom_textbox(mapping = aes(0.85, 0.85,
+                             label = "<span style='font-size:14pt'><i>Discount less</i> →<span>", text.color = "black", orientation = "left-rotated",
+                             box.color = "transparent", hjust = 0.9, vjust = 0.5, halign = 1), width = unit(0.47, "npc")) +
+  xlim(0, 1) +
+  theme_classic() +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title.x = element_blank(),
+        axis.line.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.line.y = element_blank())
+
+k.label.high <- cowplot::plot_grid(k.label, NA, nrow = 2, rel_heights = c(1,0.1))
+
+```
+
+## Load and organise the survey data
+
+```{r survey-data, echo=FALSE, warning=FALSE, message=FALSE, cache=TRUE}
+
+# data <- read.csv("data/data_countries.csv") # this .csv is very large preprocessed version loaded below
+# 
+# # calculate mean scores (code from Boryana Todorova, matching ICPC analysis)
+# 
+# data$belief <- rowMeans(data[, c("Belief.in.CC_1", "Belief.in.CC_2", "Belief.in.CC_4",
+#                                  "Belief.in.CC_5")], na.rm = T)
+# 
+# data$policy <- rowMeans(data[, c("CC_policy_1", "CC_policy_2", "CC_policy_3",
+#                                  "CC_policy_5", "CC_policy_6", "CC_policy_7",
+#                                  "CC_policy_8", "CC_policy_9", "CC_policy_10")],na.rm = T)
+# 
+# # convert the values in this column to numerical so we can sum them
+# wept_columns <- grep("confirm", names(data), value = TRUE)
+# data[wept_columns] <- lapply(data[wept_columns], as.numeric)
+# 
+# # create a variable that gives you the sum of completed pages per participant
+# data <- data %>% 
+#   mutate(wept = rowSums(select(., contains("confirm")), na.rm = T))
+# 
+# # this is a huge dataframe, remove some columns that are not needed
+# 
+# # df.all <- data %>% 
+# #   select(!contains(c("Click", "Page.Submit", "nums_", "Comments_pilot", "_DO", "Indirect_SES", "WEPTdemo"))) # if want all countries
+# 
+# # select just the countries where some participants did the effort task and exclude data from other teams who did not do effort task in uk / usa (no ui)
+# 
+# df <- data %>% 
+#   select(!contains(c("Click", "Page.Submit", "nums_", "Comments_pilot", "_DO", "Indirect_SES", "WEPTdemo"))) %>% 
+#   subset(country == "bulgaria" | country == "greece" | country == "nigeria" | country == "sweden" | country == "uk" | country == "usa") %>% 
+#   mutate(ParticipantType = as.character(ParticipantType)) %>% 
+#   mutate(ui = as.character(ui))
+# 
+# rm(data)
+# 
+# # a few participants have their ui in the column ParticipantType instead - move to ui
+# 
+# ind <- df$ui == "" & !is.na(df$ui)
+# df$ui[ind] <- str_remove(df$ParticipantType[ind], "MSI\\?ui=")
+# df <- df %>% select(!"ParticipantType")
+
+# save this data to be matched up with effort task in MATLAB script (open the resulting csv in excel and save as .xlsx as better for matlab input)
+
+# write.csv(df, file = "data/data_countries6.csv")
+
+df <- read.csv("data/data_countries6.csv")
+
+# other data prep:
+
+df$Gender_all <- df$Gender
+df$Gender_all[is.na(df$Gender_all)] <- 3 # set missing gender to the same code as "prefer not to say"
+df$Gender[df$Gender > 2] <- NA # set unknown or other gender to missing for control mixed model as not enough participants to include as factor
+
+# create factors for categorical variables
+df <- df %>%
+  mutate(Gender = factor(Gender,
+                         levels = c(1,2),
+                         labels = c("male", "female")))  %>%
+  mutate(Gender_all = factor(Gender_all,
+                         levels = c(1,2,3,4),
+                         labels = c("male", "female", "unknown","other"))) %>% 
+  mutate(t1 = as.numeric(`Duration..in.seconds.`)) 
+
+# if don't remove very long times to complete the first survey cant analyse t1 control variable as so skewed
+df$t1[df$t1 > (60 * 60 * 24)] <- NA # remove time for few people who took more than 24 hours to complete the first survey - without this huge SD
+df$t1[df$t1 > mean(df$t1, na.rm = T) + (3*sd(df$t1, na.rm = T))] <- NA # then remove time for people >3SD above the mean time
+
+df <- df  %>% 
+  mutate(t1.sc = scale(t1))
+
+contrasts(df$Gender) <- contr.sum(2)
+
+```
+
+## Load and organise the effort data
+
+```{r effort-data, echo=FALSE, warning=FALSE, message=FALSE, fig.height=8, fig.width=12}
+
+## trial by trial data from full sample
+d.tbt.full <- read.csv('data/LMMs_final_full.csv', header=T, na.strings = "NaN")
+
+d.tbt.full$credits <- NA
+d.tbt.full$credits[d.tbt.full$rew == 1 & d.tbt.full$success == 1] <- 4
+d.tbt.full$credits[d.tbt.full$rew == 2 & d.tbt.full$success == 1] <- 12
+d.tbt.full$credits[d.tbt.full$rew == 3 & d.tbt.full$success == 1] <- 20
+d.tbt.full$credits[d.tbt.full$decision == 0] <- 3
+d.tbt.full$credits[d.tbt.full$decision == 1 & d.tbt.full$success == 0] <- 0
+d.tbt.full$credits[is.na(d.tbt.full$decision)] <- 0
+
+# to only include trials where the participant responded:
+d.tbt.full <- d.tbt.full[!is.na(d.tbt.full$decision),] # delete missing trials
+
+names <- ''
+for (i in 1:12) {
+  name <- as.character(unique(df$condName[df$cond == i])[[1]])
+  names <- c(names, name)
+  d.tbt.full$intername[d.tbt.full$intervention == i] <- name
+}
+
+d.tbt.full$intername <- factor(d.tbt.full$intername, levels = names)
+
+## include measures from manylabs survey
+d.tbt.full <- left_join(d.tbt.full, df %>% select(c("ui", "wept", "policy", "belief", "Share", "Gender", "Age"), contains("Duration")) %>% mutate(ui = factor(ui)), by = "ui") %>% mutate(t1 = as.numeric(`Duration..in.seconds.`)) 
+
+d.tbt.full <- d.tbt.full %>% select(!contains("Duration"))
+
+# if don't remove very long times to complete the first survey cant analyse t1 control variable as so skewed
+d.tbt.full$t1[d.tbt.full$t1 > (60 * 60 * 24)] <- NA # remove time for few people who took more than 24 hours to complete the first survey - without this huge SD
+d.tbt.full$t1[d.tbt.full$t1 > mean(d.tbt.full$t1, na.rm = T) + (3*sd(d.tbt.full$t1, na.rm = T))] <- NA # then remove time for people >3SD above the mean time
+
+d.tbt.full[d.tbt.full == -99] <- NA
+d.tbt.full[d.tbt.full == "[]"] <- NA
+d.tbt.full$AMI_total <- as.numeric(as.character(d.tbt.full$AMI_total))
+d.tbt.full$AMI_BA <- as.numeric(as.character(d.tbt.full$AMI_BA))
+d.tbt.full$AMI_ES <- as.numeric(as.character(d.tbt.full$AMI_ES))
+d.tbt.full$AMI_SM <- as.numeric(as.character(d.tbt.full$AMI_SM))
+
+d.tbt.full <- d.tbt.full %>% 
+  mutate(decision.num = as.numeric(decision)) %>% 
+  mutate(decision = factor(decision)) %>% 
+  mutate(agent = factor(agent, labels = c("Food", "Climate"))) %>%
+  mutate(effort.f = factor(eff, levels = sort(unique(eff)), labels = c(2,3,4,5))) %>% 
+  mutate(reward.f = factor(rew, levels = sort(unique(rew)), labels = c(2,3,4))) %>% 
+  mutate(effort.c = as.numeric(as.character(effort.f))) %>% 
+  mutate(effort.sc = scale(effort.c)) %>% 
+  mutate(reward.c = as.numeric(as.character(reward.f))) %>% 
+  mutate(reward.sc = scale(reward.c)) %>% 
+  mutate(effortsq = effort.c^2) %>% 
+  mutate(effortsq.sc = scale(effortsq)) %>% 
+  mutate(intervention = factor(intervention)) %>% 
+  mutate(Age = scale(Age)) %>%
+  mutate(wept = scale(wept)) %>%
+  mutate(belief = scale(belief)) %>%
+  mutate(policy = scale(policy)) %>% 
+  mutate(t1.sc = scale(t1)) 
+
+contrasts(d.tbt.full$agent) = contr.sum(2)
+
+d.tbt.control <- d.tbt.full %>% subset(intername == "Control")
+
+d.tbt.exp <- d.tbt.full %>% subset(intername != "Control")
+
+```
+
+## Load and organise the modelling data
+
+```{r model-data, echo=FALSE, warning=FALSE, message=FALSE, fig.height=12, fig.width=12}
+
+## computational modelling parameters from linear model
+
+d.mod.full.wide <- read.csv('data/EM_fit_parameters_full_ms_two_k_one_beta_linear.csv', header=T) 
+
+colnames(d.mod.full.wide) <- str_replace(colnames(d.mod.full.wide), pattern = "climate_", replacement = "climate-")
+colnames(d.mod.full.wide) <- str_replace(colnames(d.mod.full.wide), pattern = "food_", replacement = "food-")
+colnames(d.mod.full.wide) <- str_replace(colnames(d.mod.full.wide), "climate-k_minus_food-k", replacement = "climate_k_minus_food_k")
+
+names.raw <- ''
+
+for (i in 1:12) {
+  name <- as.character(unique(df$condName[df$cond == i])[[1]])
+  names.raw[i] <- name
+  d.mod.full.wide$intername[d.mod.full.wide$intervention == i] <- name
+}
+
+d.mod.full.wide$intername <- factor(d.mod.full.wide$intername, levels = names)
+
+d.mod.full.wide <- left_join(d.mod.full.wide, df %>% select(!"country"), by = "ui")
+d.mod.full.wide <- left_join(d.mod.full.wide, unique(d.tbt.full %>% select("ui", contains(c("fatigue", "nasa", "AMI", "impact", "dictator")))), by = "ui")
+
+d.mod.full <- d.mod.full.wide %>%
+  pivot_longer(cols = starts_with(c("food-", "climate-"), ignore.case = F), names_to = c("agent", ".value"), names_sep = "-") %>%
+  mutate(Age = scale(Age)) %>% 
+  mutate(agent = factor(agent, levels = c("food", "climate"), labels = c("Food", "Climate"))) %>%
+  mutate(intervention = factor(intervention))
+
+contrasts(d.mod.full$agent) = contr.sum(2)
+
+d.mod.full.wide <- d.mod.full %>%
+  pivot_wider(values_from = c("choice", "k"), names_from = "agent", names_glue = "{agent}-{.value}")
+# 
+# colnames(d.mod.full.wide) <- str_replace(colnames(d.mod.full.wide), pattern = "impactnational", replacement = "impact_national")
+# colnames(d.mod.full.wide) <- str_replace(colnames(d.mod.full.wide), pattern = "impactinternational", replacement = "impact_international")
+# colnames(d.mod.full) <- str_replace(colnames(d.mod.full), pattern = "impactnational", replacement = "impact_national")
+# colnames(d.mod.full) <- str_replace(colnames(d.mod.full), pattern = "impactinternational", replacement = "impact_international")
+
+## parameters for control group only
+d.mod.control <- d.mod.full %>% subset(intername == "Control")
+
+## parameters for intervention groups
+d.mod.exp <- d.mod.full %>% subset(intername != "Control")
+
+# names.f <- str_replace_all(names[2:13],  "((?<=[a-z])[A-Z]|[A-Z](?=[a-z]))",  " \\1")
+names.f <- c("Control", "Work Together Norm", "Negative Emotions", "Scientific Consensus", "Effective Collective Action", "System Justification", "Psychological Distance", "Pluralistic Ignorance", "Letter to Future Generation", "Dynamic Social Norms", "Future-Self Continuity", "Binding Moral Foundations")
+names.f.axis <- c("Control", "Work\nTogether\nNorm", "Negative\nEmotions", "Scientific\nConsensus", "Effective\nCollective\nAction", "System\nJustification", "Psychological\nDistance", "Pluralistic\nIgnorance", "Letter\nto\nFuture\nGeneration", "Dynamic\nSocial\nNorms", "Future-Self\nContinuity", "Binding\nMoral\nFoundations")
+names.f.short <- c("C", "WTN", "NE", "SC", "ECA", "SJ", "PD", "PI", "LtFG", "DSN", "F-SC", "BMF")
+names.orig <- c('Control', 'Identity-Social-Norms-Intervention', 'NegativeEmotions', 'SciConsens', 'CollectAction', 'SystemJust', 'PsychDistance', 'PluralIgnorance', 'Letter2Future', 'DynamicNorm', 'FutureSelfCont', 'BindingMoral')
+
+names.all <- tibble(intername = names.orig, shortname = names.f.short)
+
+names.f.lab <- names.f.axis[2:12]
+names(names.f.lab) <- names.raw[2:12]
+
+# rm(df) # remove huge dataframe now added info for relevant participants to the other dataframes
+df$intername <- factor(df$condName, levels = names)
+
+```
+
+## Means & correlations
+
+```{r descriptives, echo=FALSE, warning=FALSE, message=FALSE}
+
+ages <- d.mod.full.wide %>% 
+  group_by(country) %>% 
+  summarise(mean_age = mean(Age, na.rm = TRUE), min_age = min(Age, na.rm = TRUE), max_age = max(Age, na.rm = TRUE), n =n())
+
+demographics <- d.mod.full.wide %>% 
+  group_by(country) %>% 
+  count(Gender_all) %>% 
+  pivot_wider(names_from = c(Gender_all), values_from = n) %>% 
+  left_join(y = ages, by = "country") %>% 
+  mutate(mean_age = round(mean_age, 2)) %>% 
+  mutate(female_per = round(female / n * 100))
+
+rm(ages)
+
+```
+
+## Mixed models of choices
+
+```{r choice-control-lin-models, echo=FALSE, message=FALSE, warning=FALSE, results='asis', cache=TRUE, eval=FALSE}
+
+# CONTROL GROUP - effort linear
+
+m.control.choice.lin.max <- mixed(decision ~ effort.sc*reward.sc*agent + (1 + effort.sc*reward.sc*agent | country/ui), data=d.tbt.control, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+save(m.control.choice.lin.max, file = "output/model_control_choice_lin_max.RData")
+
+### singular fit -> follow procedure in Bates et al., 2018 to simplify and reach convergence
+
+# fit zero-correlation parameter model (including random interactions but fully decorrelated)
+m.control.choice.lin.uc <- mixed(decision ~ effort.sc*reward.sc*agent + (1 + effort.sc*reward.sc*agent || country/ui), data=d.tbt.control, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+save(m.control.choice.lin.uc, file = "output/model_control_choice_lin_uc.RData")
+# singular fit
+
+# remove all random interactions as very low variance explained
+m.control.choice.lin.uc2 <- mixed(decision ~ effort.sc*reward.sc*agent + (1 + effort.sc + reward.sc + agent || country/ui), data=d.tbt.control, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+save(m.control.choice.lin.uc2, file = "output/model_control_choice_lin_uc2.RData")
+# singular fit
+
+# remove just country-level effect of agent and the intercept very low variance explained
+m.control.choice.lin.uc3 <- mixed(decision ~ effort.sc*reward.sc*agent + (0 + effort.sc + reward.sc || country/ui) + (1 + agent || ui:country), data=d.tbt.control, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+save(m.control.choice.lin.uc3, file = "output/model_control_choice_lin_uc3.RData")
+# singular fit
+
+# remove just country-level effect of reward very low variance explained
+m.control.choice.lin.uc4 <- mixed(decision ~ effort.sc*reward.sc*agent + (0 + effort.sc || country/ui) + (1 + agent + reward.sc|| ui:country), data=d.tbt.control, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+save(m.control.choice.lin.uc4, file = "output/model_control_choice_lin_uc4.RData")
+# converges
+
+# test whether removing 3-way interaction worse
+m.control.choice.lin.no3i <- mixed(decision ~ effort.sc*reward.sc + effort.sc*agent + reward.sc*agent + (0 + effort.sc || country/ui) + (1 + agent  + reward.sc || ui:country), data=d.tbt.control, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+save(m.control.choice.lin.no3i, file = "output/model_control_choice_lin_no3i.RData")
+anova(m.control.choice.lin.uc4, m.control.choice.lin.no3i) # not worse
+
+# test whether removing effort*reward interaction worse (smallest effect)
+m.control.choice.lin.noRE <- mixed(decision ~ effort.sc*agent + reward.sc*agent + (0 + effort.sc || country/ui) + (1 + agent + reward.sc || ui:country), data=d.tbt.control, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+save(m.control.choice.lin.noRE, file = "output/model_control_choice_lin_noRE.RData")
+anova(m.control.choice.lin.no3i, m.control.choice.lin.noRE) # not worse
+
+# test whether removing effort*agent interaction worse (smallest effect)
+m.control.choice.lin.noAE <- mixed(decision ~ effort.sc + reward.sc*agent + (0 + effort.sc || country/ui) + (1 + agent + reward.sc || ui:country), data=d.tbt.control, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+save(m.control.choice.lin.noAE, file = "output/model_control_choice_lin_noAE.RData")
+anova(m.control.choice.lin.noRE, m.control.choice.lin.noAE) # not worse
+
+# test whether removing final 2-way interaction worse
+m.control.choice.lin.no2i <- mixed(decision ~ effort.sc + reward.sc + agent + (0 + effort.sc || country/ui) + (1 + agent + reward.sc || ui:country), data=d.tbt.control, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+save(m.control.choice.lin.no2i, file = "output/model_control_choice_lin_no2i.RData")
+anova(m.control.choice.lin.noAE, m.control.choice.lin.no2i) # not worse
+
+```
+
+```{r choice-full-lin-models, echo=FALSE, message=FALSE, warning=FALSE, results='asis', cache=TRUE, eval=FALSE}
+
+# FULL SAMPLE - effort linear
+
+m.full.choice.lin.max <- mixed(decision ~ effort.sc*reward.sc*agent + (1 + effort.sc*reward.sc*agent | country/ui), data=d.tbt.full, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+save(m.full.choice.lin.max, file = "output/model_full_choice_lin_max.RData")
+
+### singular fit -> follow procedure in Bates et al., 2018 to simplify and reach convergence
+
+# fit zero-correlation parameter model (including random interactions but fully decorrelated)
+m.full.choice.lin.uc <- mixed(decision ~ effort.sc*reward.sc*agent + (1 + effort.sc*reward.sc*agent || country/ui), data=d.tbt.full, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+save(m.full.choice.lin.uc, file = "output/model_full_choice_lin_uc.RData")
+# singular fit
+
+# remove all random interactions as very low variance explained
+m.full.choice.lin.uc2 <- mixed(decision ~ effort.sc*reward.sc*agent + (1 + effort.sc + reward.sc + agent || country/ui), data=d.tbt.full, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+save(m.full.choice.lin.uc2, file = "output/model_full_choice_lin_uc2.RData")
+# singular fit
+
+# remove just country-level effect of agent and the intercept as very low variance explained
+m.full.choice.lin.uc3 <- mixed(decision ~ effort.sc*reward.sc*agent + (0 + effort.sc + reward.sc || country/ui) + (1 + agent || ui:country), data=d.tbt.full, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+save(m.full.choice.lin.uc3, file = "output/model_full_choice_lin_uc3.RData")
+# converges
+
+# test whether removing 3-way interaction worse
+m.full.choice.lin.no3i <- mixed(decision ~ effort.sc*reward.sc + effort.sc*agent + reward.sc*agent + (0 + effort.sc + reward.sc || country/ui) + (1 + agent || ui:country), data=d.tbt.full, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+save(m.full.choice.lin.no3i, file = "output/model_full_choice_lin_no3i.RData")
+anova(m.full.choice.lin.uc3, m.full.choice.lin.no3i) # not worse
+
+# test whether removing effort*reward interaction worse (smallest effect)
+m.full.choice.lin.noRE <- mixed(decision ~ effort.sc*agent + reward.sc*agent + (0 + effort.sc + reward.sc || country/ui) + (1 + agent || ui:country), data=d.tbt.full, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+save(m.full.choice.lin.noRE, file = "output/model_full_choice_lin_noRE.RData")
+anova(m.full.choice.lin.noRE, m.full.choice.lin.no3i) # not worse
+
+# test whether removing effort*agent interaction worse (smallest effect)
+m.full.choice.lin.noAE <- mixed(decision ~ effort.sc + reward.sc*agent + (0 + effort.sc + reward.sc || country/ui) + (1 + agent || ui:country), data=d.tbt.full, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+save(m.full.choice.lin.noAE, file = "output/model_full_choice_lin_noAE.RData")
+anova(m.full.choice.lin.noAE, m.full.choice.lin.noRE) # not worse
+
+# test whether removing final 2-way interaction worse
+m.full.choice.lin.no2i <- mixed(decision ~ effort.sc + reward.sc + agent + (0 + effort.sc + reward.sc || country/ui) + (1 + agent || ui:country), data=d.tbt.full, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+save(m.full.choice.lin.no2i, file = "output/model_full_choice_lin_no2i.RData")
+anova(m.full.choice.lin.noAE, m.full.choice.lin.no2i) # not worse - use when add interventions so less complex
+
+```
+
+```{r choice-lin-models-f, echo=FALSE, message=FALSE, warning=FALSE, results='asis', cache=TRUE}
+
+load("output/model_control_choice_lin_no2i.RData")
+
+m.control.choice.use <- m.control.choice.lin.no2i
+
+coeff.control.choice <- model_parameters(m.control.choice.use,  effects = "fixed", exponentiate = T)
+df.err <- model_parameters(m.control.choice.use, effects = "fixed")
+df.err <- df.err$df_error[1]
+# coeff.control.choice <- coeff.control.choice %>% 
+#   add_column(d = z_to_d(coeff.control.choice$z, df.err, ci = F)[["d"]], .before = "p")
+coeff.control.choice.k  <- kable(coeff.control.choice)  %>% kable_styling()
+# print(coeff.control.choice.k)
+
+# select columns for output and format then write csv
+r.control.choice <- coeff.control.choice %>% 
+  subset(Effects != "random") %>% 
+  select(!c("CI", "Effects", "df_error")) %>% 
+  mutate(Parameter = str_replace(Parameter, pattern = ":", replacement = " * ")) %>% 
+  mutate(Parameter = str_replace(Parameter, pattern = "effort.sc", replacement = "Effort")) %>% 
+  mutate(Parameter = str_replace(Parameter, pattern = "reward.sc", replacement = "Reward")) %>% 
+  mutate(Parameter = str_replace(Parameter, pattern = "agent1", replacement = "Cause (Food > Climate)"))
+
+# if (writecsvs == 1) {write.csv(x = r.control.choice, file = "tables/Results_control_choice_lin.csv", row.names = F)}
+
+load("output/model_full_choice_lin_no2i.RData")
+
+m.full.choice.use <- m.full.choice.lin.no2i
+
+coeff.full.choice <- model_parameters(m.full.choice.use,  effects = "fixed", exponentiate = T)
+df.err <- model_parameters(m.full.choice.use, effects = "fixed")
+df.err <- df.err$df_error[1]
+# coeff.full.choice <- coeff.full.choice %>% 
+#   add_column(d = z_to_d(coeff.full.choice$z, df.err, ci = F)[["d"]], .before = "p")
+coeff.full.choice.k  <- kable(coeff.full.choice)  %>% kable_styling()
+# print(coeff.full.choice.k)
+
+# select columns for output and format then write csv
+r.full.choice <- coeff.full.choice %>% 
+  subset(Effects != "random") %>% 
+  select(!c("CI", "Effects", "df_error")) %>% 
+  mutate(Parameter = str_replace(Parameter, pattern = ":", replacement = " * ")) %>% 
+  mutate(Parameter = str_replace(Parameter, pattern = "effort.sc", replacement = "Effort")) %>% 
+  mutate(Parameter = str_replace(Parameter, pattern = "reward.sc", replacement = "Reward")) %>% 
+  mutate(Parameter = str_replace(Parameter, pattern = "agent1", replacement = "Cause (Food > Climate)"))
+
+# if (writecsvs == 1) {write.csv(x = r.full.choice, file = "tables/Results_full_choice_lin.csv", row.names = F)}
+
+```
+
+```{r choice-country-models, echo=FALSE, message=FALSE, warning=FALSE, results='asis', cache=TRUE, eval=FALSE}
+
+m.bulgaria.no2i <- mixed(decision ~ effort.sc + reward.sc + agent + (1 + effort.sc + reward.sc + agent || ui), data=d.tbt.full %>% subset(country == "Bulgaria"), family=binomial, control = glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+
+save(m.bulgaria.no2i, file = "output/model_bulgaria_no2i.RData")
+
+m.greece.no2i <- mixed(decision ~ effort.sc + reward.sc + agent + (1 + effort.sc + reward.sc + agent || ui), data=d.tbt.full %>% subset(country == "Greece"), family=binomial, control = glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+
+save(m.greece.no2i, file = "output/model_greece_no2i.RData")
+
+m.nigeria.no2i <- mixed(decision ~ effort.sc + reward.sc + agent + (1 + effort.sc + reward.sc + agent || ui), data=d.tbt.full %>% subset(country == "Nigeria"), family=binomial, control = glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+
+save(m.nigeria.no2i, file = "output/model_nigeria_no2i.RData")
+
+m.sweden.no2i <- mixed(decision ~ effort.sc + reward.sc + agent + (1 + effort.sc + reward.sc + agent || ui), data=d.tbt.full %>% subset(country == "Sweden"), family=binomial, control = glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+
+save(m.sweden.no2i, file = "output/model_sweden_no2i.RData")
+
+m.uk.no2i <- mixed(decision ~ effort.sc + reward.sc + agent + (1 + effort.sc + reward.sc + agent || ui), data=d.tbt.full %>% subset(country == "UK"), family=binomial, control = glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+
+save(m.uk.no2i, file = "output/model_uk_no2i.RData")
+
+m.us.no2i <- mixed(decision ~ effort.sc + reward.sc + agent + (1 + effort.sc + reward.sc + agent || ui), data=d.tbt.full %>% subset(country == "US"), family=binomial, control = glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+
+save(m.us.no2i, file = "output/model_us_no2i.RData")
+
+```
+
+```{r choice-posthocs, echo=FALSE, message=FALSE, warning=FALSE, results='asis', cache=TRUE}
+
+d.ag.full <- d.tbt.full %>% 
+  group_by(agent, ui, intername) %>% 
+  summarise(choice = mean(decision.num))
+
+d.ag.control <- d.ag.full %>% subset(intername == "Control")
+d.ag.exp <- d.ag.full %>% subset(intername != "Control")
+
+con.ag.control.bf <- ttestBF(d.ag.control$choice[d.ag.control$agent == "Food"],
+                             d.ag.control$choice[d.ag.control$agent == "Climate"], 
+                             paired = T)
+
+con.ag.control.bf01 <- 1 / con.ag.control.bf
+con.ag.control.bf01 <- extractBF(con.ag.control.bf01)
+
+con.ag.exp.bf <- ttestBF(d.ag.exp$choice[d.ag.exp$agent == "Food"],
+                         d.ag.exp$choice[d.ag.exp$agent == "Climate"], 
+                         paired = T)
+
+con.ag.exp.bf01 <- 1 / con.ag.exp.bf
+con.ag.exp.bf01 <- extractBF(con.ag.exp.bf01)
+
+``` 
+
+```{r choice-control-sq-models, echo=FALSE, message=FALSE, warning=FALSE, results='asis', cache=TRUE, eval=FALSE}
+
+# CONTROL GROUP - effort squared
+
+m.control.choice.sq.max <- mixed(decision ~ effortsq.sc*reward.sc*agent + (1 + effortsq.sc*reward.sc*agent | country/ui), data=d.tbt.control, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+save(m.control.choice.sq.max, file = "output/model_control_choice_sq_max.RData")
+
+### singular fit -> follow procedure in Bates et al., 2018 to simplify and reach convergence
+
+# fit zero-correlation parameter model (including random interactions but fully decorrelated)
+m.control.choice.sq.uc <- mixed(decision ~ effortsq.sc*reward.sc*agent + (1 + effortsq.sc*reward.sc*agent || country/ui), data=d.tbt.control, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+save(m.control.choice.sq.uc, file = "output/model_control_choice_sq_uc.RData") 
+# singular fit
+
+# remove all random interactions as very low variance explained
+m.control.choice.sq.uc2 <- mixed(decision ~ effortsq.sc*reward.sc*agent + (1 + effortsq.sc + reward.sc + agent || country/ui), data=d.tbt.control, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+save(m.control.choice.sq.uc2, file = "output/model_control_choice_sq_uc2.RData")
+# singular fit
+
+# remove just country-level effect of agent and the intercept very low variance explained
+m.control.choice.sq.uc3 <- mixed(decision ~ effortsq.sc*reward.sc*agent + (0 + effortsq.sc + reward.sc || country/ui) + (1 + agent || ui:country), data=d.tbt.control, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+save(m.control.choice.sq.uc3, file = "output/model_control_choice_sq_uc3.RData")
+# singular fit
+
+# remove just country-level effect of reward very low variance explained
+m.control.choice.sq.uc4 <- mixed(decision ~ effortsq.sc*reward.sc*agent + (0 + effortsq.sc || country/ui) + (1 + agent + reward.sc|| ui:country), data=d.tbt.control, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+save(m.control.choice.sq.uc4, file = "output/model_control_choice_sq_uc4.RData")
+# converges
+
+# test whether removing 3-way interaction worse
+m.control.choice.sq.no3i <- mixed(decision ~ effortsq.sc*reward.sc + effortsq.sc*agent + reward.sc*agent + (0 + effortsq.sc || country/ui) + (1 + agent  + reward.sc || ui:country), data=d.tbt.control, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+save(m.control.choice.sq.no3i, file = "output/model_control_choice_sq_no3i.RData")
+anova(m.control.choice.sq.uc4, m.control.choice.sq.no3i) # not worse
+
+# test whether removing effort*reward interaction worse (smallest effect)
+m.control.choice.sq.noRE <- mixed(decision ~ effortsq.sc*agent + reward.sc*agent + (0 + effortsq.sc || country/ui) + (1 + agent + reward.sc || ui:country), data=d.tbt.control, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+save(m.control.choice.sq.noRE, file = "output/model_control_choice_sq_noRE.RData")
+anova(m.control.choice.sq.no3i, m.control.choice.sq.noRE) # not worse
+
+# test whether removing effort*agent interaction worse (smallest effect)
+m.control.choice.sq.noAE <- mixed(decision ~ effortsq.sc + reward.sc*agent + (0 + effortsq.sc || country/ui) + (1 + agent + reward.sc || ui:country), data=d.tbt.control, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+save(m.control.choice.sq.noAE, file = "output/model_control_choice_sq_noAE.RData")
+anova(m.control.choice.sq.noRE, m.control.choice.sq.noAE) # not worse 
+
+# test whether removing final 2-way interaction worse
+m.control.choice.sq.no2i <- mixed(decision ~ effortsq.sc + reward.sc + agent + (0 + effortsq.sc || country/ui) + (1 + agent + reward.sc || ui:country), data=d.tbt.control, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+save(m.control.choice.sq.no2i, file = "output/model_control_choice_sq_no2i.RData")
+anova(m.control.choice.sq.noAE, m.control.choice.sq.no2i) # not worse
+
+```
+
+```{r choice-full-sq-models, echo=FALSE, message=FALSE, warning=FALSE, results='asis', cache=TRUE, eval=FALSE}
+
+# FULL SAMPLE - effort squared
+
+m.full.choice.sq.max <- mixed(decision ~ effortsq.sc*reward.sc*agent + (1 + effortsq.sc*reward.sc*agent | country/ui), data=d.tbt.full, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+save(m.full.choice.sq.max, file = "output/model_full_choice_sq_max.RData")
+
+### singular fit -> follow procedure in Bates et al., 2018 to simplify and reach convergence
+
+# fit zero-correlation parameter model (including random interactions but fully decorrelated)
+m.full.choice.sq.uc <- mixed(decision ~ effortsq.sc*reward.sc*agent + (1 + effortsq.sc*reward.sc*agent || country/ui), data=d.tbt.full, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+save(m.full.choice.sq.uc, file = "output/model_full_choice_sq_uc.RData") 
+# singular fit
+
+# remove all random interactions as very low variance explained
+m.full.choice.sq.uc2 <- mixed(decision ~ effortsq.sc*reward.sc*agent + (1 + effortsq.sc + reward.sc + agent || country/ui), data=d.tbt.full, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+save(m.full.choice.sq.uc2, file = "output/model_full_choice_sq_uc2.RData")
+# singular fit
+
+# remove just country-level effect of agent and the intercept very low variance explained
+m.full.choice.sq.uc3 <- mixed(decision ~ effortsq.sc*reward.sc*agent + (0 + effortsq.sc + reward.sc || country/ui) + (1 + agent || ui:country), data=d.tbt.full, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+save(m.full.choice.sq.uc3, file = "output/model_full_choice_sq_uc3.RData")
+# converges
+
+# test whether removing 3-way interaction worse
+m.full.choice.sq.no3i <- mixed(decision ~ effortsq.sc*reward.sc + effortsq.sc*agent + reward.sc*agent + (0 + effortsq.sc + reward.sc || country/ui) + (1 + agent || ui:country), data=d.tbt.full, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+save(m.full.choice.sq.no3i, file = "output/model_full_choice_sq_no3i.RData")
+anova(m.full.choice.sq.uc3, m.full.choice.sq.no3i) # not worse
+
+# test whether removing effort*reward interaction worse (smallest effect)
+m.full.choice.sq.noRE <- mixed(decision ~ effortsq.sc*agent + reward.sc*agent + (0 + effortsq.sc + reward.sc || country/ui) + (1 + agent || ui:country), data=d.tbt.full, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+save(m.full.choice.sq.noRE, file = "output/model_full_choice_sq_noRE.RData")
+anova(m.full.choice.sq.no3i, m.full.choice.sq.noRE) # not worse
+
+# test whether removing effort*agent interaction worse (smallest effect)
+m.full.choice.sq.noAE <- mixed(decision ~ effortsq.sc + reward.sc*agent + (0 + effortsq.sc + reward.sc || country/ui) + (1 + agent || ui:country), data=d.tbt.full, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+save(m.full.choice.sq.noAE, file = "output/model_full_choice_sq_noAE.RData")
+anova(m.full.choice.sq.noRE, m.full.choice.sq.noAE) # not worse 
+
+# test whether removing final 2-way interaction worse
+m.full.choice.sq.no2i <- mixed(decision ~ effortsq.sc + reward.sc + agent + (0 + effortsq.sc + reward.sc || country/ui) + (1 + agent || ui:country), data=d.tbt.full, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), return = "merMod", expand_re = T)
+save(m.full.choice.sq.no2i, file = "output/model_full_choice_sq_no2i.RData")
+anova(m.full.choice.sq.noAE, m.full.choice.sq.no2i) # not worse
+```
+
+```{r choice-sq-models-f, echo=FALSE, message=FALSE, warning=FALSE, results='asis', cache=TRUE}
+
+load("output/model_control_choice_sq_no2i.RData")
+
+m.control.choice.sq.use <- m.control.choice.sq.no2i
+
+coeff.control.choice.sq <- model_parameters(m.control.choice.sq.use,  effects = "fixed", exponentiate = T)
+df.err <- model_parameters(m.control.choice.sq.use, effects = "fixed")
+df.err <- df.err$df_error[1]
+# coeff.control.choice.sq <- coeff.control.choice.sq %>% 
+#   add_column(d = z_to_d(coeff.control.choice.sq$z, df.err, ci = F)[["d"]], .before = "p")
+coeff.control.choice.sq.k  <- kable(coeff.control.choice.sq)  %>% kable_styling()
+# print(coeff.control.choice.sq.k)
+
+# select columns for output and format then write csv
+r.control.choice.sq <- coeff.control.choice.sq %>% 
+  subset(Effects != "random") %>% 
+  select(!c("CI", "Effects", "df_error")) %>% 
+  mutate(Parameter = str_replace(Parameter, pattern = ":", replacement = " * ")) %>% 
+  mutate(Parameter = str_replace(Parameter, pattern = "effortsq.sc", replacement = "Effort")) %>% 
+  mutate(Parameter = str_replace(Parameter, pattern = "reward.sc", replacement = "Reward")) %>% 
+  mutate(Parameter = str_replace(Parameter, pattern = "agent1", replacement = "Cause (Food > Climate)"))
+
+# if (writecsvs == 1) {write.csv(x = r.control.choice.sq, file = "tables/Results_control_choice_sq.csv", row.names = F)}
+
+load("output/model_full_choice_sq_no2i.RData")
+
+m.full.choice.sq.use <- m.full.choice.sq.no2i
+
+coeff.full.choice.sq <- model_parameters(m.full.choice.sq.use,  effects = "fixed", exponentiate = T)
+df.err <- model_parameters(m.full.choice.sq.use, effects = "fixed")
+df.err <- df.err$df_error[1]
+# coeff.full.choice.sq <- coeff.full.choice.sq %>% 
+#   add_column(d = z_to_d(coeff.full.choice.sq$z, df.err, ci = F)[["d"]], .before = "p")
+coeff.full.choice.sq.k  <- kable(coeff.full.choice.sq)  %>% kable_styling()
+# print(coeff.full.choice.sq.k)
+
+# select columns for output and format then write csv
+r.full.choice.sq <- coeff.full.choice.sq %>% 
+  subset(Effects != "random") %>% 
+  select(!c("CI", "Effects", "df_error")) %>% 
+  mutate(Parameter = str_replace(Parameter, pattern = ":", replacement = " * ")) %>% 
+  mutate(Parameter = str_replace(Parameter, pattern = "effortsq.sc", replacement = "Effort")) %>% 
+  mutate(Parameter = str_replace(Parameter, pattern = "reward.sc", replacement = "Reward")) %>% 
+  mutate(Parameter = str_replace(Parameter, pattern = "agent1", replacement = "Cause (Food > Climate)"))
+
+# if (writecsvs == 1) {write.csv(x = r.full.choice.sq, file = "tables/Results_full_choice_sq.csv", row.names = F)}
+
+```
+
+## Mixed models of *K*s
+
+```{r k-models, echo=FALSE, message=FALSE, warning=FALSE, results='asis', cache=TRUE, eval=FALSE}
+
+m.control.k.g.log <- mixed(k ~ agent + 
+                          (1 | country/ui),
+                        data=d.mod.control, family = Gamma(link = 'log'),
+                        control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), 
+                        return = "merMod", expand_re = T, check_contrasts = F)
+summary(m.control.k.g.log)
+save(m.control.k.g.log, file = "output/model_control_k.RData")
+
+m.full.k.g.log <- mixed(k ~ agent + 
+                         (1 | ui),
+                        data=d.mod.full, family = Gamma(link = 'log'),
+                        control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), 
+                        return = "merMod", expand_re = T, check_contrasts = F)
+summary(m.full.k.g.log)
+save(m.full.k.g.log, file = "output/model_full_k.RData")
+
+```
+
+```{r k-posthocs, echo=FALSE, message=FALSE, warning=FALSE, results='asis', cache=TRUE}
+
+con.k.control.bf <- ttestBF(d.mod.control$k[d.mod.control$agent == "Food"],
+                             d.mod.control$k[d.mod.control$agent == "Climate"], 
+                             paired = T)
+
+con.k.control.bf01 <- 1 / con.k.control.bf
+con.k.control.bf01 <- extractBF(con.k.control.bf01)
+
+con.k.exp.bf <- ttestBF(d.mod.control$k[d.mod.control$agent == "Food"],
+                         d.mod.control$k[d.mod.control$agent == "Climate"], 
+                         paired = T)
+
+con.k.exp.bf01 <- 1 / con.k.exp.bf
+con.k.exp.bf01 <- extractBF(con.k.exp.bf01)
+
+```
+
+```{r k-models-f, echo=FALSE, message=FALSE, warning=FALSE, results='asis', cache=TRUE}
+
+load("output/model_control_k.RData")
+
+m.control.k.use <- m.control.k.g.log
+
+coeff.control.k <- model_parameters(m.control.k.use,  effects = "fixed", exponentiate = T)
+df.err <- model_parameters(m.control.k.use, effects = "fixed")
+df.err <- df.err$df_error[1]
+# coeff.control.k <- coeff.control.k %>% 
+#   add_column(d = z_to_d(coeff.control.k$z, df.err, ci = F)[["d"]], .before = "p")
+# print(coeff.control.k)
+
+# select columns for output and format then write csv
+r.control.k <- coeff.control.k %>% 
+  subset(Effects != "random") %>% 
+  select(!c("CI", "Effects")) %>% 
+  mutate(Parameter = str_replace(Parameter, pattern = ":", replacement = " * ")) %>% 
+  mutate(Parameter = str_replace(Parameter, pattern = "agent1", replacement = "Cause (Food > Climate)"))
+
+# if (writecsvs == 1) {write.csv(x = r.control.k, file = "tables/Results_control_k.csv", row.names = F)}
+
+load("output/model_full_k.RData")
+
+m.full.k.use <- m.full.k.g.log
+
+coeff.full.k <- model_parameters(m.full.k.use,  effects = "fixed", exponentiate = T)
+df.err <- model_parameters(m.full.k.use, effects = "fixed")
+df.err <- df.err$df_error[1]
+# coeff.full.k <- coeff.full.k %>% 
+#   add_column(d = z_to_d(coeff.full.k$z, df.err, ci = F)[["d"]], .before = "p")
+# print(coeff.full.k)
+
+# select columns for output and format then write csv
+r.full.k <- coeff.full.k %>%  
+  subset(Effects != "random") %>% 
+  select(!c("CI", "Effects")) %>% 
+  mutate(Parameter = str_replace(Parameter, pattern = ":", replacement = " * ")) %>% 
+  mutate(Parameter = str_replace(Parameter, pattern = "agent1", replacement = "Cause (Food > Climate)"))
+
+# if (writecsvs == 1) {write.csv(x = r.full.k, file = "tables/Results_full_k.csv", row.names = F)}
+
+```
+
+## Mixed models of intervention effects on choices
+
+```{r choice-inter-lin-models, echo=FALSE, message=FALSE, warning=FALSE, results='asis', cache=TRUE, eval=FALSE}
+
+# start with best model identified without intervention effects and add 2-way interactions with intervention, no random effect of intervention to start with
+
+m.inter.choice.lin.no2i <- mixed(decision ~ effort.sc*intervention + reward.sc*intervention + agent*intervention + 
+                              (0 + effort.sc + reward.sc || country/ui) + (1 + agent || ui:country), 
+                            data=d.tbt.full, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), 
+                            return = "merMod", expand_re = T, 
+                            check_contrasts = F)
+save(m.inter.choice.lin.no2i, file = "output/model_inter_choice_lin_no2i.RData")
+
+# try adding random intercept by country back (caused singular fit when no intervention effect)
+
+m.inter.choice.lin.no2i.ri <- mixed(decision ~ effort.sc*intervention + reward.sc*intervention + agent*intervention + 
+                              (0 + effort.sc + reward.sc || country/ui) + (1 + agent || ui:country) + (1 | country), 
+                            data=d.tbt.full, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), 
+                            return = "merMod", expand_re = T, 
+                            check_contrasts = F)
+save(m.inter.choice.lin.no2i.ri, file = "output/model_inter_choice_lin_no2i_ri.RData") # singular fit
+
+# try a random country-level effect of intervention
+
+m.inter.choice.lin.no2i.rs <- mixed(decision ~ effort.sc*intervention + reward.sc*intervention + agent*intervention + 
+                              (0 + effort.sc + reward.sc || country/ui) + (1 + agent || ui:country) + (0 + intervention | country), 
+                            data=d.tbt.full, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), 
+                            return = "merMod", expand_re = T, 
+                            check_contrasts = F)
+save(m.inter.choice.lin.no2i.rs, file = "output/model_inter_choice_lin_no2i_rs.RData") # cannot fit
+
+# test whether removing reward*intervention interaction worse (smallest effect overall, no sig interactions for each level)
+
+m.inter.choice.lin.no2i.noRI <- mixed(decision ~ effort.sc*intervention + reward.sc + agent*intervention + 
+                              (0 + effort.sc + reward.sc || country/ui) + (1 + agent || ui:country), 
+                            data=d.tbt.full, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), 
+                            return = "merMod", expand_re = T, 
+                            check_contrasts = F)
+save(m.inter.choice.lin.no2i.noRI, file = "output/model_inter_choice_lin_no2i_noRI.RData")
+anova(m.inter.choice.lin.no2i, m.inter.choice.lin.no2i.noRI) # not worse
+
+# test whether removing effort*interaction interaction worse (no hypothesis for)
+
+m.inter.choice.lin.no2i.noRI.noEI <- mixed(decision ~ effort.sc + reward.sc + agent*intervention + 
+                              (0 + effort.sc + reward.sc || country/ui) + (1 + agent || ui:country), 
+                            data=d.tbt.full, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), 
+                            return = "merMod", expand_re = T, 
+                            check_contrasts = F)
+save(m.inter.choice.lin.no2i.noRI.noEI, file = "output/model_inter_choice_lin_no2i_noRI_noEI.RData")
+anova(m.inter.choice.lin.no2i.noRI.noEI, m.inter.choice.lin.no2i.noRI) # not worse
+
+# test adding nested agent effect back (singular fit without intervention)
+
+m.inter.choice.lin.AI.Ar <- mixed(decision ~ effort.sc + reward.sc + agent*intervention + 
+                              (0 + effort.sc + reward.sc + agent || country/ui) + (1 | ui:country), 
+                            data=d.tbt.full, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), 
+                            return = "merMod", expand_re = T, 
+                            check_contrasts = F)
+save(m.inter.choice.lin.AI.Ar, file = "output/model_inter_choice_lin_AI_Ar.RData") # singular fit
+
+# test adding 3-way interactions with intervention and agent + reward / effort
+
+m.inter.choice.lin.3i <- mixed(decision ~ effortsq.sc*agent*intervention + reward.sc*agent*intervention + 
+                              (0 + effort.sc + reward.sc || country/ui) + (1 + agent || ui:country), 
+                            data=d.tbt.full, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), 
+                            return = "merMod", expand_re = T, 
+                            check_contrasts = F)
+save(m.inter.choice.lin.3i, file = "output/model_inter_choice_lin_3i.RData")
+anova(m.inter.choice.lin.no2i.noRI.noEI, m.inter.choice.lin.3i) # not better
+
+```
+
+```{r choice-controls-lin-models, echo=FALSE, message=FALSE, warning=FALSE, results='asis', cache=TRUE, eval=FALSE}
+
+# model with just 2-way interaction between agent and intervention
+
+# time to finish first survey
+
+m.inter.choice.lin.AI.t1 <- mixed(decision ~ t1.sc + effort.sc + reward.sc + agent*intervention + 
+                              (0 + effort.sc + reward.sc || country/ui) + (1 + agent || ui:country), 
+                            data=d.tbt.full, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), 
+                            return = "merMod", expand_re = T, 
+                            check_contrasts = F)
+save(m.inter.choice.lin.AI.t1, file = "output/model_inter_choice_AI_lin_t1.RData")
+
+# trees planted in WEPT task
+
+m.inter.choice.lin.AI.wept <- mixed(decision ~ wept + effort.sc + reward.sc + agent*intervention + 
+                              (0 + effort.sc + reward.sc || country/ui) + (1 + agent || ui:country), 
+                            data=d.tbt.full, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), 
+                            return = "merMod", expand_re = T, 
+                            check_contrasts = F)
+save(m.inter.choice.lin.AI.wept, file = "output/model_inter_choice_AI_lin_wept.RData")
+
+# age & gender
+
+m.inter.choice.lin.AI.agegen <- mixed(decision ~ Age + Gender + effort.sc + reward.sc + agent*intervention + 
+                              (0 + effort.sc + reward.sc || country/ui) + (1 + agent || ui:country), 
+                            data=d.tbt.full, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), 
+                            return = "merMod", expand_re = T, 
+                            check_contrasts = F)
+save(m.inter.choice.lin.AI.agegen, file = "output/model_inter_choice_AI_lin_agegen.RData")
+
+```
+
+```{r choice-inter-lin-models-f, echo=FALSE, message=FALSE, warning=FALSE, results='asis', cache=TRUE}
+
+load("output/model_inter_choice_lin_no2i_noRI_noEI.RData")
+
+m.inter.choice.lin.use <- m.inter.choice.lin.no2i.noRI.noEI
+
+inter.choice.lin.coeff <- model_parameters(m.inter.choice.lin.use, effects = "fixed", exponentiate = T)
+df.err <- model_parameters(m.inter.choice.lin.use, effects = "fixed")
+df.err <- df.err$df_error[1]
+# inter.choice.lin.coeff <- inter.choice.lin.coeff %>%
+#   add_column(d = z_to_d(inter.choice.lin.coeff$z, df.err, ci = F)[["d"]], .before = "p")
+# inter.choice.lin.coeff.k  <- kable(inter.choice.lin.coeff)  %>% kable_styling()
+
+r.inter.choice.lin <- inter.choice.lin.coeff %>%
+  # subset(Effects != "random") %>%
+  select(!c("CI", "Effects", "df_error")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = ":", replacement = " * ")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = "effort.sc", replacement = "Effort")) %>% 
+  mutate(Parameter = str_replace(Parameter, pattern = "reward.sc", replacement = "Reward")) %>% 
+  mutate(Parameter = str_replace(Parameter, pattern = "agent1", replacement = "Cause (Food > Climate)"))
+
+for (i in 2:12) {
+  name <- names.f[i]#as.character(unique(d.mod.full.wide$condName[d.mod.full.wide$cond == i])[[1]])
+  r.inter.choice.lin <- r.inter.choice.lin %>%
+    mutate(Parameter = str_replace(Parameter, pattern = paste0("intervention",i), replacement = name))
+}
+
+# if (writecsvs == 1) {write.csv(x = r.inter.choice.lin, file = "tables/Results_inter_choice_lin.csv", row.names = F)}
+
+load("output/model_inter_choice_lin_AI_t1.RData")
+
+m.inter.choice.lin.t1 <- m.inter.choice.lin.AI.t1
+
+coeff.inter.choice.lin.t1 <- model_parameters(m.inter.choice.lin.t1, effects = "fixed", exponentiate = T)
+df.err <- model_parameters(m.inter.choice.lin.t1, effects = "fixed")
+df.err <- df.err$df_error[1]
+# coeff.inter.choice.lin.t1 <- coeff.inter.choice.lin.t1 %>%
+#   add_column(d = z_to_d(coeff.inter.choice.lin.t1$z, df.err, ci = F)[["d"]], .before = "p")
+# coeff.inter.choice.lin.t1  <- kable(coeff.inter.choice.lin.t1)  %>% kable_styling()
+
+r.inter.choice.lin.t1 <- coeff.inter.choice.lin.t1 %>%
+  # subset(Effects != "random") %>%
+  select(!c("CI", "Effects", "df_error")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = ":", replacement = " * ")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = "t1.sc", replacement = "Time")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = "effort.sc", replacement = "Effort")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = "reward.sc", replacement = "Reward")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = "agent1", replacement = "Cause (Food > Climate)"))
+
+for (i in 2:12) {
+  name <- names.f[i]#as.character(unique(d.mod.full.wide$condName[d.mod.full.wide$cond == i])[[1]])
+  r.inter.choice.lin.t1 <- r.inter.choice.lin.t1 %>%
+    mutate(Parameter = str_replace(Parameter, pattern = paste0("intervention",i), replacement = name))
+}
+
+# if (writecsvs == 1) {write.csv(x = r.inter.choice.lin.t1, file = "output/results_inter_choice_t1.csv", row.names = F)}
+
+load("output/model_inter_choice_lin_AI_wept.RData")
+
+m.inter.choice.lin.wept <- m.inter.choice.lin.AI.wept
+
+coeff.inter.choice.lin.wept <- model_parameters(m.inter.choice.lin.wept, effects = "fixed", exponentiate = T)
+df.err <- model_parameters(m.inter.choice.lin.wept, effects = "fixed")
+df.err <- df.err$df_error[1]
+# coeff.inter.choice.lin.wept <- coeff.inter.choice.lin.wept %>%
+#   add_column(d = z_to_d(coeff.inter.choice.lin.wept$z, df.err, ci = F)[["d"]], .before = "p")
+# coeff.inter.choice.lin.wept  <- kable(coeff.inter.choice.lin.wept)  %>% kable_styling()
+
+r.inter.choice.lin.wept <- coeff.inter.choice.lin.wept %>%
+  select(!c("CI", "Effects", "df_error")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = ":", replacement = " * ")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = "wept", replacement = "WEPT")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = "effort.sc", replacement = "Effort")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = "reward.sc", replacement = "Reward")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = "agent1", replacement = "Cause (Food > Climate)"))
+
+for (i in 2:12) {
+  name <- names.f[i]#as.character(unique(d.mod.full.wide$condName[d.mod.full.wide$cond == i])[[1]])
+  r.inter.choice.lin.wept <- r.inter.choice.lin.wept %>%
+    mutate(Parameter = str_replace(Parameter, pattern = paste0("intervention",i), replacement = name))
+}
+
+# if (writecsvs == 1) {write.csv(x = r.inter.choice.lin.wept, file = "output/results_inter_choice_wept.csv", row.names = F)}
+
+load("output/model_inter_choice_lin_AI_agegen.RData")
+
+m.inter.choice.lin.agegen <- m.inter.choice.lin.AI.agegen
+
+coeff.inter.choice.lin.agegen <- model_parameters(m.inter.choice.lin.agegen, effects = "fixed", exponentiate = T)
+df.err <- model_parameters(m.inter.choice.lin.agegen, effects = "fixed")
+df.err <- df.err$df_error[1]
+# coeff.inter.choice.lin.agegen <- coeff.inter.choice.lin.agegen %>%
+#   add_column(d = z_to_d(coeff.inter.choice.lin.agegen$z, df.err, ci = F)[["d"]], .before = "p")
+# coeff.inter.choice.lin.agegen  <- kable(coeff.inter.choice.lin.agegen)  %>% kable_styling()
+
+r.inter.choice.lin.agegen <- coeff.inter.choice.lin.agegen %>%
+  # subset(Effects != "random") %>%
+  select(!c("CI", "Effects", "df_error")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = ":", replacement = " * ")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = "Gender1", replacement = "Gender (Male > Female)")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = "effort.sc", replacement = "Effort")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = "reward.sc", replacement = "Reward")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = "agent1", replacement = "Cause (Food > Climate)"))
+
+for (i in 2:12) {
+  name <- names.f[i]#as.character(unique(d.mod.full.wide$condName[d.mod.full.wide$cond == i])[[1]])
+  r.inter.choice.lin.agegen <- r.inter.choice.lin.agegen %>%
+    mutate(Parameter = str_replace(Parameter, pattern = paste0("intervention",i), replacement = name))
+}
+
+# if (writecsvs == 1) {write.csv(x = r.inter.choice.lin.agegen, file = "output/results_inter_choice_agegen.csv", row.names = F)}
+
+r.inter.choice.lin$agegen_p <- r.inter.choice.lin.agegen$p[r.inter.choice.lin.agegen$Parameter != "Age" & r.inter.choice.lin.agegen$Parameter != "Gender (Male > Female)"]
+r.inter.choice.lin$t1_p <- r.inter.choice.lin.t1$p[r.inter.choice.lin.t1$Parameter != "Time"]
+r.inter.choice.lin$wept_p <- r.inter.choice.lin.wept$p[r.inter.choice.lin.wept$Parameter != "WEPT"]
+
+```
+
+```{r choice-inter-posthocs, echo=FALSE, message=FALSE, warning=FALSE, results='asis', cache=TRUE}
+
+con.inter.choice.ag <- contrast(emmeans(m.inter.choice.lin.use, ~ agent | intervention), 'pairwise', by=NULL, adjust = "none", type = "response")
+con.inter.choice.ag <- as.data.frame(con.inter.choice.ag) %>% 
+  separate(col = contrast, sep = " / ", into = c("first", "second")) 
+con.inter.choice.ag <- con.inter.choice.ag %>% 
+  separate(col = first, sep = " ", into = c("cause1", "inter1")) %>% 
+  separate(col = second, sep = " ", into = c("cause2", "inter2"))
+
+con.inter.choice.ag <- con.inter.choice.ag %>% 
+  subset(inter1 == inter2)
+
+con.inter.choice.eg <- emtrends(m.inter.choice.lin.use, pairwise ~ intervention, var = "effort.sc", adjust = "none", type = "response")
+
+con.inter.choice.eg <- as.data.frame(con.inter.choice.eg[["emtrends"]]) %>% 
+  add_column(term = "Effect of effort in each group", .before = "effort.sc.trend")
+
+con.inter.choice.rg <- emtrends(m.inter.choice.lin.use, pairwise ~ intervention, var = "reward.sc", adjust = "none", type = "response")
+
+con.full.choice.rg <- as.data.frame(con.inter.choice.rg[["emtrends"]]) %>% 
+  add_column(term = "Effect of reward in each group", .before = "reward.sc.trend")
+
+
+``` 
+
+```{r choice-inter-sq-models, echo=FALSE, message=FALSE, warning=FALSE, results='asis', cache=TRUE, eval=FALSE}
+
+# start with best model identified without intervention effects and add 2-way interactions with intervention, no random effect of intervention to start with
+
+m.inter.choice.sq.no2i <- mixed(decision ~ effortsq.sc*intervention + reward.sc*intervention + agent*intervention + 
+                              (0 + effortsq.sc + reward.sc || country/ui) + (1 + agent || ui:country), 
+                            data=d.tbt.full, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), 
+                            return = "merMod", expand_re = T, 
+                            check_contrasts = F)
+save(m.inter.choice.sq.no2i, file = "output/model_inter_choice_sq_no2i.RData")
+
+# # try adding random intercept by country back (caused singular fit when no intervention effect)
+
+m.inter.choice.sq.no2i.ri <- mixed(decision ~ effortsq.sc*intervention + reward.sc*intervention + agent*intervention + 
+                              (0 + effortsq.sc + reward.sc || country/ui) + (1 + agent || ui:country) + (1 | country), 
+                            data=d.tbt.full, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), 
+                            return = "merMod", expand_re = T, 
+                            check_contrasts = F)
+save(m.inter.choice.sq.no2i.ri, file = "output/model_inter_choice_sq_no2i_ri.RData")
+# singular fit
+
+# # try a random country-level effect of intervention
+
+m.inter.choice.sq.no2i.rs <- mixed(decision ~ effortsq.sc*intervention + reward.sc*intervention + agent*intervention + 
+                              (0 + effortsq.sc + reward.sc || country/ui) + (1 + agent || ui:country) + (0 + intervention | country), 
+                            data=d.tbt.full, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), 
+                            return = "merMod", expand_re = T, 
+                            check_contrasts = F)
+save(m.inter.choice.sq.no2i.rs, file = "output/model_inter_choice_sq_no2i_rs.RData") # cannot fit
+
+# test whether removing effort*interaction interaction worse (smallest effect overall, no sig interactions for each level)
+
+m.inter.choice.sq.no2i.noEI <- mixed(decision ~ effortsq.sc + reward.sc*intervention + agent*intervention + 
+                              (0 + effortsq.sc + reward.sc || country/ui) + (1 + agent || ui:country), 
+                            data=d.tbt.full, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), 
+                            return = "merMod", expand_re = T, 
+                            check_contrasts = F)
+save(m.inter.choice.sq.no2i.noEI, file = "output/model_inter_choice_sq_no2i_noEI.RData")
+
+anova(m.inter.choice.sq.no2i.noEI, m.inter.choice.sq.no2i) # not worse
+
+# test whether removing reward*intervention interaction worse (no hypothesis for)
+ 
+m.inter.choice.sq.no2i.noEI.noRI <- mixed(decision ~ effortsq.sc + reward.sc + agent*intervention + 
+                              (0 + effortsq.sc + reward.sc || country/ui) + (1 + agent || ui:country), 
+                            data=d.tbt.full, family=binomial, control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), 
+                            return = "merMod", expand_re = T, 
+                            check_contrasts = F)
+save(m.inter.choice.sq.no2i.noEI.noRI, file = "output/model_inter_choice_sq_no2i_noEI_noRI.RData")
+
+anova(m.inter.choice.sq.no2i.noEI, m.inter.choice.sq.no2i.noEI.noRI) # not worse
+
+# test adding nested agent effect back (singular fit without intervention)
+
+m.inter.choice.sq.AI.Ar <- mixed(decision ~ effortsq.sc + reward.sc + agent*intervention + 
+                              (0 + effortsq.sc + reward.sc + agent || country/ui) + (1 | ui:country), 
+                            data=d.tbt.full, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), 
+                            return = "merMod", expand_re = T, 
+                            check_contrasts = F)
+save(m.inter.choice.sq.AI.Ar, file = "output/model_inter_choice_sq_AI_Ar.RData") # singular fit
+
+# test adding 3-way interactions with intervention and agent + reward / effort
+
+m.inter.choice.sq.3i <- mixed(decision ~ effortsq.sc*agent*intervention + reward.sc*agent*intervention + 
+                              (0 + effortsq.sc + reward.sc || country/ui) + (1 + agent || ui:country), 
+                            data=d.tbt.full, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), 
+                            return = "merMod", expand_re = T, 
+                            check_contrasts = F)
+save(m.inter.choice.sq.3i, file = "output/model_inter_choice_sq_3i.RData")
+
+```
+
+```{r choice-controls-sq-models, echo=FALSE, message=FALSE, warning=FALSE, results='asis', cache=TRUE, eval=FALSE}
+
+# model with just 2-way interaction between agent and intervention
+
+# time to finish first survey
+
+m.inter.choice.sq.AI.t1 <- mixed(decision ~ t1.sc + effortsq.sc + reward.sc + agent*intervention + 
+                              (0 + effortsq.sc + reward.sc || country/ui) + (1 + agent || ui:country), 
+                            data=d.tbt.full, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), 
+                            return = "merMod", expand_re = T, 
+                            check_contrasts = F)
+save(m.inter.choice.sq.AI.t1, file = "output/model_inter_choice_sq_AI_t1.RData")
+
+# trees planted in WEPT task
+
+m.inter.choice.sq.AI.wept <- mixed(decision ~ wept + effortsq.sc + reward.sc + agent*intervention + 
+                              (0 + effortsq.sc + reward.sc || country/ui) + (1 + agent || ui:country), 
+                            data=d.tbt.full, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), 
+                            return = "merMod", expand_re = T, 
+                            check_contrasts = F)
+save(m.inter.choice.sq.AI.wept, file = "output/model_inter_choice_sq_AI_wept.RData")
+
+# age & gender
+
+m.inter.choice.sq.AI.agegen <- mixed(decision ~ Age + Gender + effortsq.sc + reward.sc + agent*intervention + 
+                              (0 + effortsq.sc + reward.sc || country/ui) + (1 + agent || ui:country), 
+                            data=d.tbt.full, family=binomial,control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), 
+                            return = "merMod", expand_re = T, 
+                            check_contrasts = F)
+save(m.inter.choice.sq.AI.agegen, file = "output/model_inter_choice_sq_AI_agegen.RData")
+
+```
+
+```{r choice-inter-sq-models-f, echo=FALSE, message=FALSE, warning=FALSE, results='asis', cache=TRUE}
+
+load("output/model_inter_choice_sq_no2i_noEI_noRI.RData")
+
+m.inter.choice.sq.use <- m.inter.choice.sq.no2i.noEI.noRI
+
+coeff.inter.choice.sq <- model_parameters(m.inter.choice.sq.use, effects = "fixed", exponentiate = T)
+df.err <- model_parameters(m.inter.choice.sq.use, effects = "fixed")
+df.err <- df.err$df_error[1]
+# coeff.inter.choice.sq <- coeff.inter.choice.sq %>%
+#   add_column(d = z_to_d(coeff.inter.choice.sq$z, df.err, ci = F)[["d"]], .before = "p")
+# coeff.inter.choice.sq.k  <- kable(coeff.inter.choice.sq)  %>% kable_styling()
+
+r.inter.choice.sq <- coeff.inter.choice.sq %>%
+  select(!c("CI", "Effects", "df_error")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = ":", replacement = " * ")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = "effortsq.sc", replacement = "Effort")) %>% 
+  mutate(Parameter = str_replace(Parameter, pattern = "reward.sc", replacement = "Reward")) %>% 
+  mutate(Parameter = str_replace(Parameter, pattern = "agent1", replacement = "Cause (Food > Climate)"))
+
+for (i in 2:12) {
+  name <- names.f[i]
+  r.inter.choice.sq <- r.inter.choice.sq %>%
+    mutate(Parameter = str_replace(Parameter, pattern = paste0("intervention",i), replacement = name))
+}
+
+# if (writecsvs == 1) {write.csv(x = r.inter.choice.sq, file = "tables/results_inter_choice.sq.csv", row.names = F)}
+
+load("output/model_inter_choice_sq_AI_t1.RData")
+
+m.inter.choice.sq.t1 <- m.inter.choice.sq.AI.t1
+
+coeff.inter.choice.sq.t1 <- model_parameters(m.inter.choice.sq.t1, effects = "fixed", exponentiate = T)
+df.err <- model_parameters(m.inter.choice.sq.t1, effects = "fixed")
+df.err <- df.err$df_error[1]
+# coeff.inter.choice.sq.t1 <- coeff.inter.choice.sq.t1 %>%
+#   add_column(d = z_to_d(coeff.inter.choice.sq.t1$z, df.err, ci = F)[["d"]], .before = "p")
+# coeff.inter.choice.sq.t1  <- kable(coeff.inter.choice.sq.t1)  %>% kable_styling()
+
+r.inter.choice.sq.t1 <- coeff.inter.choice.sq.t1 %>%
+  select(!c("CI", "Effects", "df_error")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = ":", replacement = " * ")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = "t1.sc", replacement = "Time")) %>% 
+  mutate(Parameter = str_replace(Parameter, pattern = "effortsq.sc", replacement = "Effort")) %>% 
+  mutate(Parameter = str_replace(Parameter, pattern = "reward.sc", replacement = "Reward")) %>% 
+  mutate(Parameter = str_replace(Parameter, pattern = "agent1", replacement = "Cause (Food > Climate)"))
+
+for (i in 2:12) {
+  name <- names.f[i]
+  r.inter.choice.sq.t1 <- r.inter.choice.sq.t1 %>%
+    mutate(Parameter = str_replace(Parameter, pattern = paste0("intervention",i), replacement = name))
+}
+
+# if (writecsvs == 1) {write.csv(x = r.inter.choice.sq.t1, file = "tables/results_inter_choice_sq_t1.csv", row.names = F)}
+
+load("output/model_inter_choice_sq_AI_wept.RData")
+
+m.inter.choice.sq.wept <- m.inter.choice.sq.AI.wept
+
+coeff.inter.choice.sq.wept <- model_parameters(m.inter.choice.sq.wept, effects = "fixed", exponentiate = T)
+df.err <- model_parameters(m.inter.choice.sq.wept, effects = "fixed")
+df.err <- df.err$df_error[1]
+# coeff.inter.choice.sq.wept <- coeff.inter.choice.sq.wept %>%
+#   add_column(d = z_to_d(coeff.inter.choice.sq.wept$z, df.err, ci = F)[["d"]], .before = "p")
+# coeff.inter.choice.sq.wept  <- kable(coeff.inter.choice.sq.wept)  %>% kable_styling()
+
+r.inter.choice.sq.wept <- coeff.inter.choice.sq.wept %>%
+  select(!c("CI", "Effects", "df_error")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = ":", replacement = " * ")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = "wept", replacement = "WEPT")) %>% 
+  mutate(Parameter = str_replace(Parameter, pattern = "effortsq.sc", replacement = "Effort")) %>% 
+  mutate(Parameter = str_replace(Parameter, pattern = "reward.sc", replacement = "Reward")) %>% 
+  mutate(Parameter = str_replace(Parameter, pattern = "agent1", replacement = "Cause (Food > Climate)"))
+
+for (i in 2:12) {
+  name <- names.f[i]
+  r.inter.choice.sq.wept <- r.inter.choice.sq.wept %>%
+    mutate(Parameter = str_replace(Parameter, pattern = paste0("intervention",i), replacement = name))
+}
+
+# if (writecsvs == 1) {write.csv(x = r.inter.choice.sq.wept, file = "tables/results_inter_choice_sq_wept.csv", row.names = F)}
+
+load("output/model_inter_choice_sq_AI_agegen.RData")
+
+m.inter.choice.sq.agegen <- m.inter.choice.sq.AI.agegen
+
+coeff.inter.choice.sq.agegen <- model_parameters(m.inter.choice.sq.agegen, effects = "fixed", exponentiate = T)
+df.err <- model_parameters(m.inter.choice.sq.agegen, effects = "fixed")
+df.err <- df.err$df_error[1]
+# coeff.inter.choice.sq.agegen <- coeff.inter.choice.sq.agegen %>%
+#   add_column(d = z_to_d(coeff.inter.choice.sq.agegen$z, df.err, ci = F)[["d"]], .before = "p")
+# coeff.inter.choice.sq.agegen  <- kable(coeff.inter.choice.sq.agegen)  %>% kable_styling()
+
+r.inter.choice.sq.agegen <- coeff.inter.choice.sq.agegen %>%
+  select(!c("CI", "Effects", "df_error")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = ":", replacement = " * ")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = "Gender1", replacement = "Gender (Male > Female)")) %>% 
+  mutate(Parameter = str_replace(Parameter, pattern = "effortsq.sc", replacement = "Effort")) %>% 
+  mutate(Parameter = str_replace(Parameter, pattern = "reward.sc", replacement = "Reward")) %>% 
+  mutate(Parameter = str_replace(Parameter, pattern = "agent1", replacement = "Cause (Food > Climate)"))
+
+for (i in 2:12) {
+  name <- names.f[i]
+  r.inter.choice.sq.agegen <- r.inter.choice.sq.agegen %>%
+    mutate(Parameter = str_replace(Parameter, pattern = paste0("intervention",i), replacement = name))
+}
+
+# if (writecsvs == 1) {write.csv(x = r.inter.choice.sq.wept, file = "tables/results_inter_choice_sq_agegen.csv", row.names = F)}
+
+r.inter.choice.sq$agegen_p <- r.inter.choice.sq.agegen$p[r.inter.choice.sq.agegen$Parameter != "Age" & r.inter.choice.sq.agegen$Parameter != "Gender (Male > Female)"]
+r.inter.choice.sq$t1_p <- r.inter.choice.sq.t1$p[r.inter.choice.sq.t1$Parameter != "Time"]
+r.inter.choice.sq$wept_p <- r.inter.choice.sq.wept$p[r.inter.choice.sq.wept$Parameter != "WEPT"]
+
+```
+
+## Mixed models of intervention effects on *K*s
+
+```{r k-inter-models, echo=FALSE, message=FALSE, warning=FALSE, results='asis', cache=TRUE, eval=FALSE}
+
+m.inter.k.g.log <- mixed(k ~ agent*intervention + 
+                          (1 | ui) + (0 + agent || country), 
+                        data=d.mod.full, family = Gamma(link = 'log'),
+                        control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), 
+                        return = "merMod", expand_re = T, check_contrasts = F)
+summary(m.inter.k.g.log)
+save(m.inter.k.g.log, file = "output/model_inter_k_gamlog.RData")
+
+```
+
+```{r k-controls-models, echo=FALSE, message=FALSE, warning=FALSE, results='asis', cache=TRUE, eval=FALSE}
+
+# time to finish first survey
+
+m.inter.k.g.log.t1 <- mixed(k ~ t1.sc + agent*intervention + 
+                              (1 | ui) + (0 + agent || country), 
+                            data=d.mod.full, family = Gamma(link = 'log'),
+                            control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), 
+                            return = "merMod", expand_re = T, 
+                            check_contrasts = F)
+save(m.inter.k.g.log.t1, file = "output/model_inter_k_gamlog_t1.RData")
+
+# trees planted in WEPT task
+
+m.inter.k.g.log.wept <- mixed(k ~ wept + agent*intervention + 
+                                (1 | ui) + (0 + agent || country), 
+                              data=d.mod.full, family = Gamma(link = 'log'),
+                              control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), 
+                              return = "merMod", expand_re = T, 
+                              check_contrasts = F)
+save(m.inter.k.g.log.wept, file = "output/model_inter_k_gamlog_wept.RData")
+
+# age & gender
+
+m.inter.k.g.log.agegen <- mixed(k ~ Age + Gender + agent*intervention + 
+                                  (1 | ui) + (0 + agent || country), 
+                                data=d.mod.full, family = Gamma(link = 'log'),
+                                control = glmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), 
+                                return = "merMod", expand_re = T, 
+                                check_contrasts = F)
+save(m.inter.k.g.log.agegen, file = "output/model_inter_k_gamlog_agegen.RData")
+
+```
+
+```{r k-inter-models-f, echo=FALSE, message=FALSE, warning=FALSE, results='asis', cache=TRUE}
+
+load("output/model_inter_k_gamlog.RData")
+
+m.inter.k.use <- m.inter.k.g.log
+
+coeff.inter.k <- model_parameters(m.inter.k.use, effects = "fixed", exponentiate = T)
+df.err <- model_parameters(m.inter.k.use, effects = "fixed")
+df.err <- df.err$df_error[1]
+# coeff.inter.k <- coeff.inter.k %>%
+#   add_column(d = z_to_d(coeff.inter.k$z, df.err, ci = F)[["d"]], .before = "p")
+
+r.inter.k <- coeff.inter.k %>%
+  select(!c("CI", "Effects")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = ":", replacement = " * ")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = "agent1", replacement = "Cause (Food > Climate)"))
+
+for (i in 2:12) {
+  name <- names.f[i]
+  r.inter.k <- r.inter.k %>%
+    mutate(Parameter = str_replace(Parameter, pattern = paste0("intervention",i), replacement = name))
+}
+
+
+load("output/model_inter_k_gamlog_t1.RData")
+
+m.inter.k.t1 <- m.inter.k.g.log.t1
+
+coeff.inter.k.t1 <- model_parameters(m.inter.k.t1, effects = "fixed", exponentiate = T)
+df.err <- model_parameters(m.inter.k.t1, effects = "fixed")
+df.err <- df.err$df_error[1]
+# coeff.inter.k.t1 <- coeff.inter.k.t1 %>%
+#   add_column(d = z_to_d(coeff.inter.k.t1$z, df.err, ci = F)[["d"]], .before = "p")
+
+r.inter.k.t1 <- coeff.inter.k.t1 %>%
+  select(!c("CI", "Effects")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = ":", replacement = " * ")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = "t1.sc", replacement = "Time")) %>% 
+  mutate(Parameter = str_replace(Parameter, pattern = "agent1", replacement = "Cause (Food > Climate)"))
+
+for (i in 2:12) {
+  name <- names.f[i]
+  r.inter.k.t1 <- r.inter.k.t1 %>%
+    mutate(Parameter = str_replace(Parameter, pattern = paste0("intervention",i), replacement = name))
+}
+
+load("output/model_inter_k_gamlog_wept.RData")
+
+m.inter.k.wept <- m.inter.k.g.log.wept
+
+coeff.inter.k.wept <- model_parameters(m.inter.k.wept, effects = "fixed", exponentiate = T)
+df.err <- model_parameters(m.inter.k.wept, effects = "fixed")
+df.err <- df.err$df_error[1]
+# coeff.inter.k.wept <- coeff.inter.k.wept %>%
+#   add_column(d = z_to_d(coeff.inter.k.wept$z, df.err, ci = F)[["d"]], .before = "p")
+
+r.inter.k.wept <- coeff.inter.k.wept %>%
+  select(!c("CI", "Effects")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = ":", replacement = " * ")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = "wept", replacement = "WEPT")) %>% 
+  mutate(Parameter = str_replace(Parameter, pattern = "agent1", replacement = "Cause (Food > Climate)"))
+
+for (i in 2:12) {
+  name <- as.character(unique(d.mod.full.wide$condName[d.mod.full.wide$cond == i])[[1]])
+  r.inter.k.wept <- r.inter.k.wept %>%
+    mutate(Parameter = str_replace(Parameter, pattern = paste0("intervention",i), replacement = name))
+}
+
+load("output/model_inter_k_gamlog_agegen.RData")
+
+m.inter.k.agegen <- m.inter.k.g.log.agegen
+
+coeff.inter.k.agegen <- model_parameters(m.inter.k.agegen, effects = "fixed", exponentiate = T)
+df.err <- model_parameters(m.inter.k.agegen, effects = "fixed")
+df.err <- df.err$df_error[1]
+# coeff.inter.k.agegen <- coeff.inter.k.agegen %>%
+#   add_column(d = z_to_d(coeff.inter.k.agegen$z, df.err, ci = F)[["d"]], .before = "p")
+
+r.inter.k.agegen <- coeff.inter.k.agegen %>%
+  select(!c("CI", "Effects")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = ":", replacement = " * ")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = "Gender1", replacement = "Gender (Male > Female)")) %>% 
+  mutate(Parameter = str_replace(Parameter, pattern = "agent1", replacement = "Cause (Food > Climate)"))
+
+for (i in 2:12) {
+  name <- as.character(unique(d.mod.full.wide$condName[d.mod.full.wide$cond == i])[[1]])
+  r.inter.k.agegen <- r.inter.k.agegen %>%
+    mutate(Parameter = str_replace(Parameter, pattern = paste0("intervention",i), replacement = name))
+}
+
+r.inter.k$agegen_p <- r.inter.k.agegen$p[r.inter.k.agegen$Parameter != "Age" & r.inter.k.agegen$Parameter != "Gender (Male > Female)"]
+r.inter.k$t1_p <- r.inter.k.t1$p[r.inter.k.t1$Parameter != "Time"]
+r.inter.k$wept_p <- r.inter.k.wept$p[r.inter.k.wept$Parameter != "WEPT"]
+
+```
+
+```{r k-inter-posthocs, echo=FALSE, message=FALSE, warning=FALSE, results='asis', cache=TRUE}
+
+con.k.ag <- contrast(emmeans(m.inter.k.use, ~ agent | intervention), 'pairwise', by=NULL, adjust = "none", type = "response")
+con.k.ag <- as.data.frame(con.k.ag) %>% 
+  separate(col = contrast, sep = " / ", into = c("first", "second")) 
+con.k.ag <- con.k.ag %>% 
+  separate(col = first, sep = " ", into = c("cause1", "inter1")) %>% 
+  separate(col = second, sep = " ", into = c("cause2", "inter2"))
+
+con.k.ag <- con.k.ag %>% 
+  subset(inter1 == inter2)
+
+```
+
+## Mixed models of intervention effects on beta parameters
+
+```{r beta-inter-models, echo=FALSE, message=FALSE, warning=FALSE, results='asis', cache=TRUE, eval=FALSE}
+
+m.inter.beta <- mixed(beta ~ intervention + 
+                          (1 | country), 
+                        data=d.mod.full, #family = Gamma(link = 'log'),
+                        control = lmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), 
+                        return = "merMod", expand_re = T, check_contrasts = F)
+summary(m.inter.beta)
+save(m.inter.beta, file = "output/model_inter_beta.RData")
+
+```
+
+```{r beta-controls-models, echo=FALSE, message=FALSE, warning=FALSE, results='asis', cache=TRUE}
+
+# time to finish first survey
+
+m.inter.beta.t1 <- mixed(beta ~ t1.sc + intervention +
+                          (1 | country),
+                        data=d.mod.full, #family = Gamma(link = 'log'),
+                        control = lmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)),
+                        return = "merMod", expand_re = T, check_contrasts = F)
+save(m.inter.beta.t1, file = "output/model_inter_beta_t1.RData")
+
+# trees planted in WEPT task
+
+m.inter.beta.wept <- mixed(beta ~ wept + intervention + 
+                          (1 | country), 
+                        data=d.mod.full, #family = Gamma(link = 'log'),
+                        control = lmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), 
+                        return = "merMod", expand_re = T, check_contrasts = F)
+save(m.inter.beta.wept, file = "output/model_inter_beta_wept.RData")
+
+# age & gender
+
+m.inter.beta.agegen <- mixed(beta ~ Age + Gender + intervention + 
+                          (1 | country), 
+                        data=d.mod.full, #family = Gamma(link = 'log'),
+                        control = lmerControl(optimizer = "bobyqa",optCtrl=list(maxfun=2e5)), 
+                        return = "merMod", expand_re = T, check_contrasts = F)
+save(m.inter.beta.agegen, file = "output/model_inter_beta_agegen.RData")
+
+```
+
+```{r beta-inter-models-f, echo=FALSE, message=FALSE, warning=FALSE, results='asis', cache=TRUE}
+
+load("output/model_inter_beta.RData")
+
+m.inter.beta.use <- m.inter.beta
+
+coeff.inter.beta <- model_parameters(m.inter.beta.use, effects = "fixed", standardize = "refit")
+df.err <- model_parameters(m.inter.beta.use, effects = "fixed")
+df.err <- df.err$df_error[1]
+# coeff.inter.beta <- coeff.inter.beta %>%
+#   add_column(d = z_to_d(coeff.inter.beta$z, df.err, ci = F)[["d"]], .before = "p")
+
+r.inter.beta <- coeff.inter.beta %>%
+  select(!c("CI", "Effects")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = ":", replacement = " * ")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = "agent1", replacement = "Cause (Food > Climate)"))
+
+for (i in 2:12) {
+  name <- names.f[i]
+  r.inter.beta <- r.inter.beta %>%
+    mutate(Parameter = str_replace(Parameter, pattern = paste0("intervention",i), replacement = name))
+}
+
+load("output/model_inter_beta_t1.RData")
+
+m.inter.beta.t1 <- m.inter.beta.t1
+
+coeff.inter.beta.t1 <- model_parameters(m.inter.beta.t1, effects = "fixed", standardize = "refit")
+df.err <- model_parameters(m.inter.beta.t1, effects = "fixed")
+df.err <- df.err$df_error[1]
+# coeff.inter.beta.t1 <- coeff.inter.beta.t1 %>%
+#   add_column(d = z_to_d(coeff.inter.beta.t1$z, df.err, ci = F)[["d"]], .before = "p")
+
+r.inter.beta.t1 <- coeff.inter.beta.t1 %>%
+  select(!c("CI", "Effects")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = ":", replacement = " * ")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = "t1.sc", replacement = "Time")) %>% 
+  mutate(Parameter = str_replace(Parameter, pattern = "agent1", replacement = "Cause (Food > Climate)"))
+
+for (i in 2:12) {
+  name <- names.f[i]
+  r.inter.beta.t1 <- r.inter.beta.t1 %>%
+    mutate(Parameter = str_replace(Parameter, pattern = paste0("intervention",i), replacement = name))
+}
+
+load("output/model_inter_beta_wept.RData")
+
+m.inter.beta.wept <- m.inter.beta.wept
+
+coeff.inter.beta.wept <- model_parameters(m.inter.beta.wept, effects = "fixed", standardize = "refit")
+df.err <- model_parameters(m.inter.beta.wept, effects = "fixed")
+df.err <- df.err$df_error[1]
+# coeff.inter.beta.wept <- coeff.inter.beta.wept %>%
+#   add_column(d = z_to_d(coeff.inter.beta.wept$z, df.err, ci = F)[["d"]], .before = "p")
+
+r.inter.beta.wept <- coeff.inter.beta.wept %>%
+  select(!c("CI", "Effects")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = ":", replacement = " * ")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = "wept", replacement = "WEPT")) %>% 
+  mutate(Parameter = str_replace(Parameter, pattern = "agent1", replacement = "Cause (Food > Climate)"))
+
+for (i in 2:12) {
+  name <- as.character(unique(d.mod.full.wide$condName[d.mod.full.wide$cond == i])[[1]])
+  r.inter.beta.wept <- r.inter.beta.wept %>%
+    mutate(Parameter = str_replace(Parameter, pattern = paste0("intervention",i), replacement = name))
+}
+
+load("output/model_inter_beta_agegen.RData")
+
+m.inter.beta.agegen <- m.inter.beta.agegen
+
+coeff.inter.beta.agegen <- model_parameters(m.inter.beta.agegen, effects = "fixed", standardize = "refit")
+df.err <- model_parameters(m.inter.beta.agegen, effects = "fixed")
+df.err <- df.err$df_error[1]
+# coeff.inter.beta.agegen <- coeff.inter.beta.agegen %>%
+#   add_column(d = z_to_d(coeff.inter.beta.agegen$z, df.err, ci = F)[["d"]], .before = "p")
+
+r.inter.beta.agegen <- coeff.inter.beta.agegen %>%
+  select(!c("CI", "Effects")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = ":", replacement = " * ")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = "Gender1", replacement = "Gender (Male > Female)")) %>% 
+  mutate(Parameter = str_replace(Parameter, pattern = "agent1", replacement = "Cause (Food > Climate)"))
+
+for (i in 2:12) {
+  name <- as.character(unique(d.mod.full.wide$condName[d.mod.full.wide$cond == i])[[1]])
+  r.inter.beta.agegen <- r.inter.beta.agegen %>%
+    mutate(Parameter = str_replace(Parameter, pattern = paste0("intervention",i), replacement = name))
+}
+
+r.inter.beta$agegen_p <- r.inter.beta.agegen$p[r.inter.beta.agegen$Parameter != "Age" & r.inter.beta.agegen$Parameter != "Gender (Male > Female)"]
+r.inter.beta$t1_p <- r.inter.beta.t1$p[r.inter.beta.t1$Parameter != "Time"]
+r.inter.beta$wept_p <- r.inter.beta.wept$p[r.inter.beta.wept$Parameter != "WEPT"]
+
+```
+
+## Mixed models of intervention effects on WEPT
+
+```{r wept-inter-models, echo=FALSE, message=FALSE, warning=FALSE, results='asis', cache=TRUE, eval=FALSE}
+
+d.mod.full.wide$wept_f <- factor(d.mod.full.wide$wept, ordered = T)
+df$wept_f <- factor(df$wept, ordered = T)
+
+m.inter.wept.ord <- clmm(wept_f ~ intername +
+                          (1 | country),
+                        data=d.mod.full.wide)
+save(m.inter.wept.ord, file = "output/model_inter_wept_ordinal.RData")
+
+m.inter.wept.ord.all <- clmm(wept_f ~ intername +
+                          (1 | country),
+                        data=df)
+save(m.inter.wept.ord.all, file = "output/model_inter_wept_ordinal_all.RData")
+
+```
+
+```{r wept-inter-models-f, echo=FALSE, message=FALSE, warning=FALSE, results='asis', cache=TRUE}
+
+load("output/model_inter_wept_ordinal_all.RData")
+
+m.inter.wept.use <- m.inter.wept.ord.all
+
+coeff.inter.wept <- model_parameters(m.inter.wept.use, effects = "fixed", exponentiate = T)
+df.err <- model_parameters(m.inter.wept.use, effects = "fixed")
+df.err <- df.err$df_error[1]
+# coeff.inter.wept <- coeff.inter.wept %>%
+#   add_column(d = z_to_d(coeff.inter.wept$z, df.err, ci = F)[["d"]], .before = "p")
+
+r.inter.wept <- coeff.inter.wept %>%
+  filter(str_detect(Parameter, "intername")) %>% 
+  select(!c("CI", "Effects", "df_error")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = ":", replacement = " * ")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = "intername", replacement = ""))
+
+for (i in 2:12) {
+  name <- names.f[i]
+  oldname <- as.character(unique(d.mod.full.wide$condName[d.mod.full.wide$cond == i])[[1]])
+  r.inter.wept <- r.inter.wept %>%
+    mutate(Parameter = str_replace(Parameter, pattern = oldname, replacement = name))
+}
+
+
+load("output/model_inter_wept_ordinal.RData")
+
+m.inter.wept.exc <- m.inter.wept.ord
+
+coeff.inter.wept.exc <- model_parameters(m.inter.wept.exc, effects = "fixed", exponentiate = T)
+df.err <- model_parameters(m.inter.wept.exc, effects = "fixed")
+df.err <- df.err$df_error[1]
+# coeff.inter.wept.exc <- coeff.inter.wept.exc %>%
+#   add_column(d = z_to_d(coeff.inter.wept.exc$z, df.err, ci = F)[["d"]], .before = "p")
+
+r.inter.wept.exc <- coeff.inter.wept.exc %>%
+  filter(str_detect(Parameter, "intername")) %>% 
+  select(!c("CI", "Effects", "df_error")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = ":", replacement = " * ")) %>%
+  mutate(Parameter = str_replace(Parameter, pattern = "intername", replacement = "")) %>% 
+  rename_at(vars(-Parameter),function(x) paste0(x,"_exc"))
+
+for (i in 2:12) {
+  name <- names.f[i]
+  oldname <- as.character(unique(d.mod.full.wide$condName[d.mod.full.wide$cond == i])[[1]])
+  r.inter.wept.exc <- r.inter.wept.exc %>%
+    mutate(Parameter = str_replace(Parameter, pattern = oldname, replacement = name))
+}
+
+r.inter.wept <- left_join(r.inter.wept, r.inter.wept.exc)
+
+```
+
+## Plot of sample
+
+```{r sample-map-plot, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=7, fig.width=12}
+
+# create data for map
+
+world_map <- map_data("world") %>% 
+  subset(region != "Antarctica")
+
+country.samples <- d.mod.full.wide %>% 
+  group_by(country) %>% 
+  count() %>% 
+  rename(region = country)
+
+country.samples$region[country.samples$region == "US"] <- "USA"
+
+df.world <- left_join(world_map, country.samples, by = "region")
+
+# create a map figure 
+
+plot.world.sample <- ggplot(df.world, aes(long, lat, group = group)) +
+  geom_polygon(aes(fill = n), color = "white", size = .1) +
+  scale_fill_gradient2(low = "#2100dd", mid = "#0046dd", high = "#00d2dd", limits = c(80,1100), na.value = "#ECECEC") +
+  theme_void() +
+  theme(legend.position = c(0.13, 0.6),
+        legend.title=element_text(size = axtext, colour = 'black', hjust = 0.18),
+        legend.text=element_text(size = axtext-2, colour = 'black'),
+        legend.key = element_rect(color = NA),
+        legend.spacing.x = unit(0.25,'cm'),
+        legend.spacing.y = unit(0.25,'cm'),
+        legend.key.height = unit(1,'cm'),
+        legend.key.width = unit(1,'cm'))
+
+print(plot.world.sample)
+
+```
+
+## Plots of choices
+
+```{r choice-full-plot, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=10, fig.width=10}
+
+plot.control.effort <- ggplot(d.tbt.control, aes(x = effort.c,  y = decision.num, fill = agent, color = agent, linetype = agent, group = agent)) +
+  stat_smooth(alpha = 0.3, size = 1, formula = y ~ x, method = "glm", method.args = list(family="binomial")) +
+  stat_smooth(alpha = 0, size = 1, formula = y ~ x, method = "glm", method.args = list(family="binomial")) +
+  scale_fill_manual(limits=agent.lims, values=agent.fills) +
+  scale_color_manual(limits=agent.lims, values=agent.cols) +
+  scale_linetype_manual(limits=agent.lims, values=agent.lines) +
+  scale_x_continuous(breaks = c(2,3,4,5)) + 
+  coord_cartesian(ylim = c(0.7,0.91)) +  
+  labs(x = "Effort Required", y = choice.lab) +
+  # ggtitle("Control group") +
+  theme_classic() +
+  paper.theme +
+  theme(legend.position = "bottom",
+        legend.title = element_blank())
+
+plot.psydis.effort <- ggplot(d.tbt.exp %>% subset(intername == "PsychDistance"), aes(x = effort.c,  y = decision.num, fill = agent, color = agent, linetype = agent, group = agent)) +
+  stat_smooth(alpha = 0.3, size = 1, formula = y ~ x, method = "glm", method.args = list(family="binomial")) +
+  stat_smooth(alpha = 0, size = 1, formula = y ~ x, method = "glm", method.args = list(family="binomial")) +
+  scale_fill_manual(limits=agent.lims, values=agent.fills) +
+  scale_color_manual(limits=agent.lims, values=agent.cols) +
+  scale_linetype_manual(limits=agent.lims, values=agent.lines) +
+  scale_x_continuous(breaks = c(2,3,4,5)) + 
+  coord_cartesian(ylim = c(0.68,0.91)) +  
+  labs(x = "Effort Required", y = choice.lab) +
+  ggtitle("Psych. Distance") +
+  theme_classic() +
+  paper.theme +
+  theme(legend.position = "bottom",
+        title = element_text(size = axtext),
+        legend.title = element_blank())
+
+legend.fc.long <- get_legend(plot.psydis.effort)
+
+plot.psydis.effort <- plot.psydis.effort +
+  theme(legend.position = "none",
+        legend.title = element_blank())
+
+plot.sysjus.effort <- ggplot(d.tbt.exp %>% subset(intername == "SystemJust"), aes(x = effort.c,  y = decision.num, fill = agent, color = agent, linetype = agent, group = agent)) +
+  stat_smooth(alpha = 0.3, size = 1, formula = y ~ x, method = "glm", method.args = list(family="binomial")) +
+  stat_smooth(alpha = 0, size = 1, formula = y ~ x, method = "glm", method.args = list(family="binomial")) +
+  scale_fill_manual(limits=agent.lims, values=agent.fills) +
+  scale_color_manual(limits=agent.lims, values=agent.cols) +
+  scale_linetype_manual(limits=agent.lims, values=agent.lines) +
+  scale_x_continuous(breaks = c(2,3,4,5)) + 
+  coord_cartesian(ylim = c(0.68,0.91)) +  
+  labs(x = "Effort Required", y = choice.lab) +
+  ggtitle("System Just.") +
+  theme_classic() +
+  paper.theme +
+  theme(legend.position = "none",
+        title = element_text(size = axtext),
+        legend.title = element_blank())
+
+plot.negemo.effort <- ggplot(d.tbt.exp %>% subset(intername == "NegativeEmotions"), aes(x = effort.c,  y = decision.num, fill = agent, color = agent, linetype = agent, group = agent)) +
+  stat_smooth(alpha = 0.3, size = 1, formula = y ~ x, method = "glm", method.args = list(family="binomial")) +
+  stat_smooth(alpha = 0, size = 1, formula = y ~ x, method = "glm", method.args = list(family="binomial")) +
+  scale_fill_manual(limits=agent.lims, values=agent.fills) +
+  scale_color_manual(limits=agent.lims, values=agent.cols) +
+  scale_linetype_manual(limits=agent.lims, values=agent.lines) +
+  scale_x_continuous(breaks = c(2,3,4,5)) + 
+  coord_cartesian(ylim = c(0.68,0.91)) +  
+  labs(x = "Effort Required", y = choice.lab) +
+  ggtitle("Neg. Emotions") +
+  theme_classic() +
+  paper.theme +
+  theme(legend.position = "none",
+        title = element_text(size = axtext),
+        legend.title = element_blank())
+
+plot.full.effort <- ggplot(d.tbt.full, aes(x = effort.c,  y = decision.num, fill = agent, color = agent, linetype = agent, group = agent)) +
+  stat_smooth(alpha = 0.3, size = 1, formula = y ~ x, method = "glm", method.args = list(family="binomial")) +
+  stat_smooth(alpha = 0, size = 1, formula = y ~ x, method = "glm", method.args = list(family="binomial")) +
+  scale_fill_manual(limits=agent.lims, values=agent.fills) +
+  scale_color_manual(limits=agent.lims, values=agent.cols) +
+  scale_linetype_manual(limits=agent.lims, values=agent.lines) +
+  scale_x_continuous(breaks = c(2,3,4,5)) + 
+  coord_cartesian(ylim = c(0.7,0.91)) +  
+  labs(x = "Effort Required", y = choice.lab) +
+  # ggtitle("Full sample") +
+  theme_classic() +
+  paper.theme +
+  theme(legend.position = "none",
+        legend.title = element_blank())
+
+# print(plot.full.effort)
+
+plot.full.effort.country <- plot.full.effort  + 
+  coord_cartesian(ylim = c(0.68,0.95)) +
+  facet_wrap("country")
+
+# print(plot.full.effort.country)
+
+plot.control.reward <- ggplot(d.tbt.control, aes(x = reward.c,  y = decision.num, fill = agent, color = agent, linetype = agent, group = agent)) +
+  stat_smooth(alpha = 0.3, size = 1, formula = y ~ x, method = "glm", method.args = list(family="binomial")) +
+  stat_smooth(alpha = 0, size = 1, formula = y ~ x, method = "glm", method.args = list(family="binomial")) +
+  scale_fill_manual(limits=agent.lims, values=agent.fills) +
+  scale_color_manual(limits=agent.lims, values=agent.cols) +
+  scale_linetype_manual(limits=agent.lims, values=agent.lines) +
+  scale_x_continuous(breaks = c(2,3,4)) + 
+  coord_cartesian(ylim = c(0.7,0.91)) +  
+  labs(x = "Reward Available", y = choice.lab) +
+  # ggtitle("Control group") +
+  theme_classic() +
+  paper.theme +
+  theme(legend.position = "top",
+        legend.title = element_blank())
+
+plot.psydis.reward <- ggplot(d.tbt.exp %>% subset(intername == "PsychDistance"), aes(x = reward.c,  y = decision.num, fill = agent, color = agent, linetype = agent, group = agent)) +
+  stat_smooth(alpha = 0.3, size = 1, formula = y ~ x, method = "glm", method.args = list(family="binomial")) +
+  stat_smooth(alpha = 0, size = 1, formula = y ~ x, method = "glm", method.args = list(family="binomial")) +
+  scale_fill_manual(limits=agent.lims, values=agent.fills) +
+  scale_color_manual(limits=agent.lims, values=agent.cols) +
+  scale_linetype_manual(limits=agent.lims, values=agent.lines) +
+  scale_x_continuous(breaks = c(2,3,4)) + 
+  coord_cartesian(ylim = c(0.68,0.91)) +  
+  labs(x = "Reward Available", y = choice.lab) +
+  # ggtitle("Psychological Distance") +
+  theme_classic() +
+  paper.theme +
+  theme(legend.position = "top",
+        legend.title = element_blank())
+
+plot.sysjus.reward <- ggplot(d.tbt.exp %>% subset(intername == "SystemJust"), aes(x = reward.c,  y = decision.num, fill = agent, color = agent, linetype = agent, group = agent)) +
+  stat_smooth(alpha = 0.3, size = 1, formula = y ~ x, method = "glm", method.args = list(family="binomial")) +
+  stat_smooth(alpha = 0, size = 1, formula = y ~ x, method = "glm", method.args = list(family="binomial")) +
+  scale_fill_manual(limits=agent.lims, values=agent.fills) +
+  scale_color_manual(limits=agent.lims, values=agent.cols) +
+  scale_linetype_manual(limits=agent.lims, values=agent.lines) +
+  scale_x_continuous(breaks = c(2,3,4)) + 
+  coord_cartesian(ylim = c(0.68,0.91)) +  
+  labs(x = "Reward Available", y = choice.lab) +
+  # ggtitle("System Justification") +
+  theme_classic() +
+  paper.theme +
+  theme(legend.position = "top",
+        legend.title = element_blank())
+
+plot.negemo.reward <- ggplot(d.tbt.exp %>% subset(intername == "NegativeEmotions"), aes(x = reward.c,  y = decision.num, fill = agent, color = agent, linetype = agent, group = agent)) +
+  stat_smooth(alpha = 0.3, size = 1, formula = y ~ x, method = "glm", method.args = list(family="binomial")) +
+  stat_smooth(alpha = 0, size = 1, formula = y ~ x, method = "glm", method.args = list(family="binomial")) +
+  scale_fill_manual(limits=agent.lims, values=agent.fills) +
+  scale_color_manual(limits=agent.lims, values=agent.cols) +
+  scale_linetype_manual(limits=agent.lims, values=agent.lines) +
+  scale_x_continuous(breaks = c(2,3,4)) + 
+  coord_cartesian(ylim = c(0.68,0.91)) +  
+  labs(x = "Reward Available", y = choice.lab) +
+  # ggtitle("Negative Emotions") +
+  theme_classic() +
+  paper.theme +
+  theme(legend.position = "top",
+        legend.title = element_blank())
+
+plot.full.reward <- ggplot(d.tbt.full, aes(x = reward.c,  y = decision.num, fill = agent, color = agent, linetype = agent, group = agent)) +
+  stat_smooth(alpha = 0.3, size = 1, formula = y ~ x, method = "glm", method.args = list(family="binomial")) +
+  stat_smooth(alpha = 0, size = 1, formula = y ~ x, method = "glm", method.args = list(family="binomial")) +
+  scale_fill_manual(limits=agent.lims, values=agent.fills) +
+  scale_color_manual(limits=agent.lims, values=agent.cols) +
+  scale_linetype_manual(limits=agent.lims, values=agent.lines) +
+  scale_x_continuous(breaks = c(2,3,4)) + 
+  coord_cartesian(ylim = c(0.7,0.91)) +  
+  labs(x = "Reward Available", y = choice.lab) +
+  # ggtitle("Full sample") +
+  theme_classic() +
+  paper.theme +
+  theme(legend.title = element_blank())
+
+plot.full.reward.country <- plot.full.reward  + 
+  coord_cartesian(ylim = c(0.68,0.95)) +
+  facet_wrap("country")
+
+# print(plot.full.reward.country)
+
+d.ag.control <- d.tbt.full %>% 
+  subset(intername == "Control") %>% 
+  group_by(agent) %>% 
+  summarise(choice = mean(decision.num))
+
+d.ag.exp <- d.ag.full %>% 
+  subset(intername != "Control") %>% 
+  add_column(choice_sub = NA)
+
+d.ag.exp$choice_sub[d.ag.exp$agent == "Food"] <- d.ag.exp$choice[d.ag.exp$agent == "Food"] - d.ag.control$choice[d.ag.control$agent == "Food"]
+
+d.ag.exp$choice_sub[d.ag.exp$agent == "Climate"] <- d.ag.exp$choice[d.ag.exp$agent == "Climate"] - d.ag.control$choice[d.ag.control$agent == "Climate"]
+
+d.ag.exp.wide <- d.ag.exp %>% 
+  pivot_wider(names_from = agent, values_from = c(choice, choice_sub), id_cols = c(ui, intername)) 
+
+d.ag.exp.wide$choice_sub <- d.ag.exp.wide$choice_sub_Climate - d.ag.exp.wide$choice_sub_Food
+mean.control.sub.k <- mean(d.mod.control$`climate.food-k`)
+d.mod.exp$k_sub <- (d.mod.exp$`climate.food-k` * -1) - (mean.control.sub.k * -1)
+
+d.ag.full.diff.av <- d.ag.exp.wide %>% 
+  group_by(intername) %>% 
+  summarise(mean = mean(choice_sub)) %>% 
+  mutate(interf = names.f[2:12]) 
+
+d.mod.full.diff.av <- d.mod.exp %>% 
+  group_by(intername) %>% 
+  summarise(k = mean(k_sub))
+
+d.ag.full.diff.av <- left_join(d.ag.full.diff.av, colours %>% subset(intername !='Control'), by = "intername")
+d.ag.full.diff.av <- left_join(d.ag.full.diff.av, names.all %>% subset(intername !='Control'), by = "intername")
+
+d.ag.full.diff.av <- left_join(d.mod.full.diff.av, d.ag.full.diff.av, by = "intername") %>% 
+  arrange(mean) %>% 
+  mutate(order = c(1,2,3,4,5,6,10,8,7,9,11)) %>% 
+  arrange(order)
+
+d.choice.control.mean <- summarySEwithin(data = d.ag.full %>% subset(intername == "Control"), measurevar = "choice", withinvars = "agent", idvar = "ui")
+
+d.agent.control <- d.tbt.full %>% 
+  subset(intername == "Control") %>% 
+  group_by(agent, ui) %>% 
+  summarise(choice = mean(decision.num))
+
+plot.control.agent.id <- ggplot(d.choice.control.mean, aes(x = agent,  y = choice, fill = agent, color = agent, group = agent)) +
+  geom_point(size = 2) +
+  geom_errorbar(aes(ymin = choice - se, ymax = choice + se), width = 0) +
+  geom_jitter(data = d.agent.control, position = position_jitternormal(sd_x = 0.15, sd_y = 0.01), size = 1.5, alpha = 0.1, show.legend = FALSE) +
+  scale_fill_manual(limits=agent.lims, values=agent.fills) +
+  scale_color_manual(limits=agent.lims, values=agent.cols) +
+  labs(x = "Cause", y = choice.lab) +
+  # ggtitle("Control group") +
+  theme_classic() +
+  paper.theme +
+  theme(legend.position = "top",
+        legend.title = element_blank()) + 
+  geom_signif(annotation = "*", y_position = 0.89,
+                               xmin = 1, xmax = 2,
+                               tip_length = 0, colour = 'black', textsize = 7)
+
+plot.inter.agent.sub <- ggplot(d.ag.exp.wide, aes(x = intername,  y = (choice_sub * 100), fill = intername, color = intername, group = intername, alpha = intername, linetype = intername, linewidth = intername)) +
+  stat_summary(shape = 16, size = 1.5,
+               fun = mean, geom = "pointrange",
+               fun.max = function(x) mean(x) + sd(x) / sqrt(length(x)),
+               fun.min = function(x) mean(x) - sd(x) / sqrt(length(x))) +
+  scale_x_discrete(limits = d.ag.full.diff.av$intername, labels = d.ag.full.diff.av$interf) + 
+  scale_alpha_manual(limits = d.ag.full.diff.av$intername, values = c(rep.int(0.4, 6), rep.int(0.6, 2), rep.int(1, 3))) +
+  scale_linetype_manual(limits = d.ag.full.diff.av$intername, values = c(rep.int('dotted', 6),  rep.int('dashed', 2), rep.int('solid', 3))) +
+  scale_colour_manual(limits = d.ag.full.diff.av$intername, values = d.ag.full.diff.av$colours, aesthetics = c("colour", "fill")) +
+  scale_linewidth_manual(limits = d.ag.full.diff.av$intername, values = c(rep.int(1.5,11))) +
+  geom_hline(yintercept = 0, linetype="dashed") +
+  labs(y = paste0("Increased % work for<br>climate vs. food")) +
+  theme_classic() +
+  paper.theme +
+  theme(legend.position = "none",
+        axis.title.y = element_blank(),
+        axis.title.x = element_markdown(),
+        legend.title = element_blank()) + 
+  coord_flip()
+
+choice.sig <- array(NA,c(5,length(sig.order)))
+i <- 1
+
+# comparing recipients for each group
+if (r.inter.choice.lin$p[r.inter.choice.lin$Parameter == "Cause (Food > Climate) * Psychological Distance"] < .05) { choice.sig[1,1] <- "*"
+} else if (r.inter.choice.lin$p[r.inter.choice.lin$Parameter == "Cause (Food > Climate) * Psychological Distance"] >= .05) {choice.sig[1,1] <- NA }
+i <- i + 1
+if (r.inter.choice.lin$p[r.inter.choice.lin$Parameter == "Cause (Food > Climate) * System Justification"] < .05) { choice.sig[1,2] <- "*"
+} else if (r.inter.choice.lin$p[r.inter.choice.lin$Parameter == "Cause (Food > Climate) * System Justification"] >= .05) {choice.sig[1,2] <- NA }
+i <- i + 1
+if (r.inter.choice.lin$p[r.inter.choice.lin$Parameter == "Cause (Food > Climate) * Negative Emotions"] < .05) { choice.sig[1,3] <- "*"
+} else if (r.inter.choice.lin$p[r.inter.choice.lin$Parameter == "Cause (Food > Climate) * Negative Emotions"] >= .05) {choice.sig[1,3] <- NA }
+i <- i + 1
+# if (r.inter.choice.lin$p[r.inter.choice.lin$Parameter == "Cause (Food > Climate) * Pluralistic Ignorance"] < .05) { choice.sig[1,4] <- "*"
+# } else if (r.inter.choice.lin$p[r.inter.choice.lin$Parameter == "Cause (Food > Climate) * Pluralistic Ignorance"] >= .05) {
+choice.sig[1,4] <- NA 
+  # }
+i <- i + 1
+if (r.inter.choice.lin$p[r.inter.choice.lin$Parameter == "Cause (Food > Climate) * Future-Self Continuity"] < .05) { choice.sig[1,5] <- "*"
+} else if (r.inter.choice.lin$p[r.inter.choice.lin$Parameter == "Cause (Food > Climate) * Future-Self Continuity"] >= .05) {choice.sig[1,5] <- NA }
+i <- i + 1
+
+colnames(choice.sig) <- sig.order
+choice.sig[2,] <- sig.names
+choice.sig[3,] <- rep(0.75,5)
+
+for (c in 1:ncol(choice.sig)){
+  plot.inter.agent.sub <- plot.inter.agent.sub + annotate("text", label = choice.sig[1,c], x = choice.sig[2,c],
+                                         y = as.numeric(choice.sig[3,c]), colour = 'black', size = 7)} 
+
+# print(plot.inter.agent.sub)
+
+```
+
+## Plots of *K* parameters
+
+```{r k-full-plot, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=6, fig.width=10}
+
+plot.inter.k.sub <- ggplot(d.mod.exp, aes(x = intername,  y = k_sub, fill = intername, color = intername, group = intername, alpha = intername, linetype = intername, linewidth = intername)) +
+  stat_summary(shape = 16, size = 1.5,
+               fun = mean, geom = "pointrange",
+               fun.max = function(x) mean(x) + sd(x) / sqrt(length(x)),
+               fun.min = function(x) mean(x) - sd(x) / sqrt(length(x))) +
+  scale_x_discrete(limits = d.ag.full.diff.av$intername, labels = d.ag.full.diff.av$interf) + 
+  scale_alpha_manual(limits = d.ag.full.diff.av$intername, values = c(rep.int(0.4, 6), rep.int(1, 2), rep.int(0.6, 1), rep.int(1, 2))) +
+  scale_linetype_manual(limits = d.ag.full.diff.av$intername, values = c(rep.int('dotted', 6), rep.int('solid', 2),  rep.int('dashed', 1), rep.int('solid', 2))) +
+  scale_colour_manual(limits = d.ag.full.diff.av$intername, values = d.ag.full.diff.av$colours, aesthetics = c("colour", "fill")) +
+  scale_linewidth_manual(limits = d.ag.full.diff.av$intername, values = c(rep.int(1.5,11))) +
+  geom_hline(yintercept = 0, linetype="dashed") +
+  labs(y = paste0("Decreased ", k.symbol, " for<br>climate vs. food")) +
+  theme_classic() +
+  paper.theme +
+  theme(legend.position = "none",
+        axis.title.y = element_blank(),
+        axis.title.x = element_markdown(),
+        legend.title = element_blank()) + 
+  coord_flip()
+
+k.sig <- array(NA,c(5,length(sig.order)))
+i <- 1
+
+# comparing recipients for each group
+if (r.inter.k$p[r.inter.k$Parameter == "Cause (Food > Climate) * Psychological Distance"] < .05) { k.sig[1,1] <- "*"
+} else if (r.inter.k$p[r.inter.k$Parameter == "Cause (Food > Climate) * Psychological Distance"] >= .05) {k.sig[1,1] <- NA }
+i <- i + 1
+if (r.inter.k$p[r.inter.k$Parameter == "Cause (Food > Climate) * System Justification"] < .05) { k.sig[1,2] <- "*"
+} else if (r.inter.k$p[r.inter.k$Parameter == "Cause (Food > Climate) * System Justification"] >= .05) {k.sig[1,2] <- NA }
+i <- i + 1
+if (r.inter.k$p[r.inter.k$Parameter == "Cause (Food > Climate) * Negative Emotions"] < .05) { k.sig[1,3] <- "*"
+} else if (r.inter.k$p[r.inter.k$Parameter == "Cause (Food > Climate) * Negative Emotions"] >= .05) {k.sig[1,3] <- NA }
+i <- i + 1
+if (r.inter.k$p[r.inter.k$Parameter == "Cause (Food > Climate) * Pluralistic Ignorance"] < .05) { k.sig[1,4] <- "*"
+} else if (r.inter.k$p[r.inter.k$Parameter == "Cause (Food > Climate) * Pluralistic Ignorance"] >= .05) {k.sig[1,4] <- NA }
+i <- i + 1
+if (r.inter.k$p[r.inter.k$Parameter == "Cause (Food > Climate) * Future-Self Continuity"] < .05) { k.sig[1,5] <- "*"
+} else if (r.inter.k$p[r.inter.k$Parameter == "Cause (Food > Climate) * Future-Self Continuity"] >= .05) {k.sig[1,5] <- NA }
+i <- i + 1
+
+colnames(k.sig) <- sig.order
+k.sig[2,] <- sig.names
+k.sig[3,] <- rep(0.0075,5)
+
+for (c in 1:ncol(k.sig)){
+  plot.inter.k.sub <- plot.inter.k.sub + annotate("text", label = k.sig[1,c], x = k.sig[2,c],
+                                         y = as.numeric(k.sig[3,c]), colour = 'black', size = 7)} 
+
+# print(plot.inter.k.sub)
+
+```
+
+## Plots of beta parameters
+
+```{r beta-full-plot, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=6, fig.width=7}
+
+plot.inter.beta.sub <- ggplot(d.mod.full.wide %>% subset(intername != "Control"), aes(x = intername,  y = beta, fill = intername, color = intername, group = intername, alpha = intername, linetype = intername, linewidth = intername)) +
+  stat_summary(shape = 16, size = 1.5,
+               fun = mean, geom = "pointrange",
+               fun.max = function(x) mean(x) + sd(x) / sqrt(length(x)),
+               fun.min = function(x) mean(x) - sd(x) / sqrt(length(x))) +
+  scale_x_discrete(limits = as.character(d.ag.full.diff.av$intername), labels = d.ag.full.diff.av$shortname) + 
+  scale_y_continuous(breaks = c(1.7, 1.8, 1.9)) + 
+  scale_alpha_manual(limits = as.character(d.ag.full.diff.av$intername), values = c(rep.int(0.4, 2), rep.int(0.6, 1), rep.int(0.4, 8))) +
+  scale_linetype_manual(limits = as.character(d.ag.full.diff.av$intername), values = c(rep.int('dotted', 2),  rep.int('dashed', 1), rep.int('dotted', 8))) +
+  scale_colour_manual(limits = as.character(d.ag.full.diff.av$intername), values = d.ag.full.diff.av$colours, aesthetics = c("colour", "fill")) +
+  scale_linewidth_manual(limits = d.ag.full.diff.av$intername, values = c(rep.int(1.5,11))) +
+  geom_hline(yintercept = mean(d.mod.full.wide$beta[d.mod.full.wide$intername == "Control"]), linetype="dashed") +
+  labs(y = beta.lab) +
+  theme_classic() +
+  paper.theme +
+  theme(legend.position = "none",
+        axis.title.y = element_blank(),
+        axis.title.x = element_markdown(),
+        legend.title = element_blank()) + 
+  coord_flip()
+
+# print(plot.inter.beta.sub)
+
+```
+
+## Plots of *K* parameters with other measures
+
+```{r k-inddiffs-plot, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=8, fig.width=6}
+
+corr.ami.clim.k <- corr.test(d.mod.full.wide$AMI_total, d.mod.full.wide$`Climate-k`)
+corr.ami.food.k <- corr.test(d.mod.full.wide$AMI_total, d.mod.full.wide$`Food-k`)
+corr.ami.comp.k <- paired.r(corr.ami.clim.k[["r"]], corr.ami.food.k[["r"]], n=corr.ami.food.k[["n"]])
+
+plot.k.ami <- ggplot(d.mod.full, aes(x = AMI_total, y = k, colour = agent, fill = agent, linetype = agent)) + 
+  # geom_point(shape = 21, fill = NA, alpha = 0.01, size = 1, show.legend = FALSE) + 
+  # geom_smooth(method = "lm", formula = y ~ poly(x,2), alpha = 0, linewidth = 0.75, show.legend = FALSE) + 
+  geom_smooth(method = "lm", formula = y ~ x, alpha = 0.3, linewidth = 0.75) + 
+  scale_x_continuous(name = ami.lab, position = "top") +
+  scale_y_continuous(name = k.lab, trans = "reverse") +
+  coord_cartesian(ylim = c(0.45, 0.2)) +
+  scale_fill_manual(limits=agent.lims, values=agent.fills, name = NULL) +
+  scale_color_manual(limits=agent.lims, values=agent.cols, name = NULL) +
+  scale_linetype_manual(limits=agent.lims, values=agent.lines, name=NULL) +
+  theme_classic() + 
+  paper.theme +
+  theme(strip.background = element_blank(), panel.spacing = unit(2, "lines"), strip.text.x = element_markdown(size = axtitle, face = "bold"))
+
+plot.k.ami <- plot.k.ami +
+  theme(strip.background = element_blank(), panel.spacing = unit(2, "lines"), strip.text.x = element_markdown(size = axtitle, face = "bold"),
+        legend.position = "none")
+
+# print(plot.k.ami)
+
+corr.nasa.clim.k <- corr.test(d.mod.full.wide$nasa_hard, d.mod.full.wide$`Climate-k`)
+corr.nasa.food.k <- corr.test(d.mod.full.wide$nasa_hard, d.mod.full.wide$`Food-k`)
+corr.nasa.comp.k <- paired.r(corr.nasa.clim.k[["r"]], corr.nasa.food.k[["r"]], n=corr.nasa.food.k[["n"]])
+
+plot.k.nasa <- ggplot(d.mod.full, aes(x = nasa_hard, y = k, colour = agent, fill = agent, linetype = agent)) + 
+  # geom_point(shape = 21, fill = NA, alpha = 0.01, size = 1, show.legend = FALSE) + 
+  # geom_smooth(method = "lm", formula = y ~ poly(x,2), alpha = 0, linewidth = 0.75, show.legend = FALSE) + 
+  geom_smooth(method = "lm", formula = y ~ x, alpha = 0.3, linewidth = 0.75) + 
+  scale_x_continuous(name = nasa.lab, position = "top") +
+  scale_y_continuous(name = k.lab, trans = "reverse") +
+  coord_cartesian(ylim = c(0.45, 0.2)) +
+  scale_fill_manual(limits=agent.lims, values=agent.fills, name = NULL) +
+  scale_color_manual(limits=agent.lims, values=agent.cols, name = NULL) +
+  scale_linetype_manual(limits=agent.lims, values=agent.lines, name=NULL) +
+  theme_classic() + 
+  paper.theme +
+  theme(strip.background = element_blank(), panel.spacing = unit(2, "lines"), strip.text.x = element_markdown(size = axtitle, face = "bold"))
+
+plot.k.nasa <- plot.k.nasa +
+  theme(strip.background = element_blank(), panel.spacing = unit(2, "lines"), strip.text.x = element_markdown(size = axtitle, face = "bold"),
+        legend.position = "none")
+
+# print(plot.k.nasa)
+
+corr.wept.clim.k <- corr.test(d.mod.full.wide$wept, d.mod.full.wide$`Climate-k`)
+corr.wept.food.k <- corr.test(d.mod.full.wide$wept, d.mod.full.wide$`Food-k`)
+corr.wept.comp.k <- paired.r(corr.wept.clim.k[["r"]], corr.wept.food.k[["r"]], n=corr.wept.food.k[["n"]])
+
+plot.k.wept <- ggplot(d.mod.full, aes(x = wept, y = k, colour = agent, fill = agent, linetype = agent)) + 
+  # geom_point(shape = 21, fill = NA, alpha = 0.01, size = 1, show.legend = FALSE) + 
+  # geom_smooth(method = "lm", formula = y ~ poly(x,2), alpha = 0, linewidth = 0.75, show.legend = FALSE) + 
+  geom_smooth(method = "lm", formula = y ~ x, alpha = 0.3, linewidth = 0.75) + 
+  scale_x_continuous(name = wept.lab, position = "top") +
+  scale_y_continuous(name = k.lab, trans = "reverse") +
+  coord_cartesian(ylim = c(0.45, 0.2)) +
+  scale_fill_manual(limits=agent.lims, values=agent.fills, name = NULL) +
+  scale_color_manual(limits=agent.lims, values=agent.cols, name = NULL) +
+  scale_linetype_manual(limits=agent.lims, values=agent.lines, name=NULL) +
+  theme_classic() + 
+  paper.theme +
+  theme(strip.background = element_blank(), panel.spacing = unit(2, "lines"), strip.text.x = element_markdown(size = axtitle, face = "bold")) +
+  guides(fill = guide_legend(byrow = TRUE))
+
+legend.fc <- cowplot::get_legend(plot.k.wept)
+
+plot.k.wept <- plot.k.wept +
+  theme(strip.background = element_blank(), panel.spacing = unit(2, "lines"), strip.text.x = element_markdown(size = axtitle, face = "bold"),
+        legend.position = "none")
+
+# print(plot.k.wept)
+
+corr.policy.clim.k <- corr.test(d.mod.full.wide$policy, d.mod.full.wide$`Climate-k`)
+corr.policy.food.k <- corr.test(d.mod.full.wide$policy, d.mod.full.wide$`Food-k`)
+corr.policy.comp.k <- paired.r(corr.policy.clim.k[["r"]], corr.policy.food.k[["r"]], n=corr.policy.food.k[["n"]])
+
+plot.k.policy <- ggplot(d.mod.full, aes(x = policy, y = k, colour = agent, fill = agent, linetype = agent)) + 
+  # geom_point(shape = 21, fill = NA, alpha = 0.01, size = 1, show.legend = FALSE) + 
+  # geom_smooth(method = "lm", formula = y ~ poly(x,2), alpha = 0, linewidth = 0.75, show.legend = FALSE) + 
+  geom_smooth(method = "lm", formula = y ~ x, alpha = 0.3, linewidth = 0.75) + 
+  scale_x_continuous(name = policy.lab, position = "top") +
+  scale_y_continuous(name = k.lab, trans = "reverse") +
+  coord_cartesian(ylim = c(0.45, 0.2)) +
+  scale_fill_manual(limits=agent.lims, values=agent.fills, name = NULL) +
+  scale_color_manual(limits=agent.lims, values=agent.cols, name = NULL) +
+  scale_linetype_manual(limits=agent.lims, values=agent.lines, name=NULL) +
+  theme_classic() + 
+  paper.theme +
+  theme(strip.background = element_blank(), panel.spacing = unit(2, "lines"), strip.text.x = element_markdown(size = axtitle, face = "bold"),
+        legend.position = "none")
+
+# print(plot.k.policy)
+
+corr.belief.clim.k <- corr.test(d.mod.full.wide$belief, d.mod.full.wide$`Climate-k`)
+corr.belief.food.k <- corr.test(d.mod.full.wide$belief, d.mod.full.wide$`Food-k`)
+corr.belief.comp.k <- paired.r(corr.belief.clim.k[["r"]], corr.belief.food.k[["r"]], n=corr.belief.food.k[["n"]])
+
+plot.k.belief <- ggplot(d.mod.full, aes(x = belief, y = k, colour = agent, fill = agent, linetype = agent)) + 
+  # geom_point(shape = 21, fill = NA, alpha = 0.01, size = 1, show.legend = FALSE) + 
+  # geom_smooth(method = "lm", formula = y ~ poly(x,2), alpha = 0, linewidth = 0.75, show.legend = FALSE) + 
+  geom_smooth(method = "lm", formula = y ~ x, alpha = 0.3, linewidth = 0.75) + 
+  scale_x_continuous(name = belief.lab, position = "top") +
+  scale_y_continuous(name = k.lab, trans = "reverse") +
+  coord_cartesian(ylim = c(0.45, 0.2)) +
+  scale_fill_manual(limits=agent.lims, values=agent.fills, name = NULL)+
+  scale_linetype_manual(limits=agent.lims, values=agent.lines, name=NULL) +
+  scale_color_manual(limits=agent.lims, values=agent.cols, name = NULL) +
+  theme_classic() + 
+  paper.theme +
+  theme(strip.background = element_blank(), panel.spacing = unit(2, "lines"), strip.text.x = element_markdown(size = axtitle, face = "bold"),
+        legend.position = "none")
+
+# print(plot.k.belief)
+
+```
+
+## Plots of model identifiability, parameter recovery & model fit
+
+```{r mi-pr, echo = FALSE, warning=FALSE, message=FALSE, fig.width=5, fig.height=4}
+
+## Model identifiability
+
+df.mi <- read_csv("data/Model_identifiability_em.csv", col_names = T, show_col_types = FALSE)
+
+df.mi <- df.mi %>%
+  mutate(Simulated = factor(Simulated)) %>%
+  mutate(Estimated = factor(Estimated))
+
+xp.plot <- ggplot(data = df.mi, aes(x=Simulated, y=Estimated, fill=xp)) +
+  geom_tile() +
+  scale_fill_distiller(palette = "PuBu", direction = 1,
+                       limit = c(0,1), space = "Lab",
+                       name="Exceedance probability") +
+  guides(fill = guide_colorbar(title.position = 'right', title.hjust = 0.5,
+                               frame.colour = NULL, barheight = 8,
+                               ticks.colour = 'black', ticks.linewidth = 0.5,
+                               draw.ulim = FALSE, draw.llim = FALSE)) +
+  scale_x_discrete(breaks = c(1:6), labels = models) +
+  scale_y_discrete(breaks = c(1:6), labels = models) +
+  theme_classic() +
+  theme(axis.text.x = element_markdown(size = axtext, angle = 90, vjust = 0.5, hjust = 0),
+        axis.text.y = element_markdown(size = axtext, hjust = 0),
+        axis.title = element_text(size = axtitle),
+        legend.title = element_text(size = axtitle - 4, angle = 90),
+        legend.text = element_text(size = axtext - 4))
+
+bm.plot <- ggplot(data = df.mi, aes(x=Simulated, y=Estimated, fill=best)) +
+  geom_tile() +
+  scale_fill_distiller(palette = "PuBuGn", direction = 1,
+                       limit = c(0,10), space = "Lab",
+                       name="Best<br>(of 10)") +
+  guides(fill = guide_colorbar(title.position = 'top', title.hjust = 0.5,
+                               frame.colour = NULL, barheight = 8,
+                               ticks.colour = 'black', ticks.linewidth = 0.5,
+                               draw.ulim = FALSE, draw.llim = FALSE), override.aes = list(limits = c(1,0))) +
+  scale_x_discrete(breaks = c(1:6), labels = models) +
+  scale_y_discrete(breaks = c(1:6), labels = models) +
+  theme_classic() +
+  theme(axis.text.x = element_markdown(size = axtext, angle = 35, vjust = 1, hjust = 1),
+        axis.text.y = element_markdown(size = axtext, hjust = 0),
+        axis.title = element_text(size = axtitle),
+        legend.title = element_markdown(size = axtitle - 4),
+        legend.text = element_text(size = axtext - 4))
+
+## Parameter recovery
+
+df.pr <- read_csv("data/Parameter_recovery_em.csv", col_names = T, show_col_types = FALSE)
+
+df.pr$diag <- df.pr$Simulated == df.pr$Recovered
+df.pr$diag[!df.pr$diag] <- NA
+
+pal <- c("#F6E8C3", "#F5F5F5", "#C7EAE5", "#80CDC1", "#35978F", "#01665E", "#003C30") # create colour palette
+
+# graphname <- paste0(path,'Parameter_recovery.tiff')  
+
+ml.plot <- ggplot(data = df.pr, aes(x=Simulated, y=Recovered, fill=HCorr)) + 
+  geom_tile() +
+  scale_fill_gradientn(colours = pal,
+                       limit = c(-0.25,1.05), 
+                       name=" <br>*R*") +
+  guides(fill = guide_colorbar(title.position = 'top', title.hjust = 0.5, 
+                               frame.colour = NULL, barheight = 8, 
+                               ticks.colour = 'black', ticks.linewidth = 0.5,  
+                               draw.ulim = FALSE, draw.llim = FALSE, override.aes = list(limits = c(1,0)))) +
+  scale_x_continuous(breaks = c(1,2,3),
+                     labels = c(paste0("*\u039A*","<sub>food</sub>"), # rename models with k and beta symbols
+                                paste0("*\u039A*","<sub>climate</sub>"),
+                                paste0("*\u03B2*"))) +
+  scale_y_continuous(breaks = c(1,2,3),
+                     labels = c(paste0("*\u039A*","<sub>food</sub>"), # rename models with k and beta symbols
+                                paste0("*\u039A*","<sub>climate</sub>"),
+                                paste0("*\u03B2*"))) +
+  theme_classic() + 
+  theme(axis.text.x = element_markdown(size = axtext),
+        axis.text.y = element_markdown(size = axtext, angle = 90, hjust = 0.5), 
+        axis.title = element_text(size = axtitle), 
+        legend.title = element_markdown(size = axtitle - 4), 
+        legend.text = element_text(size = axtext - 4))
+
+```
+
+# Results
+
+We tested our preregistered hypotheses in samples from six countries, recruited to be representative on age and gender, creating a large international total 
+n=`r sum(demographics$n)` from
+Bulgaria
+(n=`r demographics$n[demographics$country == "Bulgaria"]`
+age `r demographics$min_age[demographics$country == "Bulgaria"]`-`r demographics$max_age[demographics$country == "Bulgaria"]`, 
+mean=`r demographics$mean_age[demographics$country == "Bulgaria"]`,
+`r demographics$female_per[demographics$country == "Bulgaria"]`% female), 
+Greece
+(n=`r demographics$n[demographics$country == "Greece"]`: see Methods,
+age `r demographics$min_age[demographics$country == "Greece"]`-`r demographics$max_age[demographics$country == "Greece"]`, 
+mean=`r demographics$mean_age[demographics$country == "Greece"]`,
+`r demographics$female_per[demographics$country == "Greece"]`% female), 
+Nigeria
+(n=`r demographics$n[demographics$country == "Nigeria"]`
+age `r demographics$min_age[demographics$country == "Nigeria"]`-`r demographics$max_age[demographics$country == "Nigeria"]`, 
+mean=`r demographics$mean_age[demographics$country == "Nigeria"]`,
+`r demographics$female_per[demographics$country == "Nigeria"]`% female), 
+Sweden
+(n=`r demographics$n[demographics$country == "Sweden"]`
+age `r demographics$min_age[demographics$country == "Sweden"]`-`r demographics$max_age[demographics$country == "Sweden"]`, 
+mean=`r demographics$mean_age[demographics$country == "Sweden"]`,
+`r demographics$female_per[demographics$country == "Sweden"]`% female), 
+UK
+(n=`r demographics$n[demographics$country == "UK"]`
+age `r demographics$min_age[demographics$country == "UK"]`-`r demographics$max_age[demographics$country == "UK"]`, 
+mean=`r demographics$mean_age[demographics$country == "UK"]`,
+`r demographics$female_per[demographics$country == "UK"]`% female), 
+and USA
+(n=`r demographics$n[demographics$country == "US"]`
+age `r demographics$min_age[demographics$country == "US"]`-`r demographics$max_age[demographics$country == "US"]`, 
+mean=`r demographics$mean_age[demographics$country == "US"]`,
+`r demographics$female_per[demographics$country == "US"]`% female; 
+Figure 1A). Participants were randomly assigned to one of 11 interventions or the control group[REFS] (see Methods & Table S1) and completed the novel Pro-Environmental Effort Task (PEET; Figure 1B). First, participants clicked as many boxes as possible within 10 seconds to evaluate their maximum capability and all subsequent effort levels were tailored to this. Then on each trial, participants chose between a no-effort, low-reward “rest” option and a high-effort high-reward “work” option. On half of the trials, the reward was for an environmental charity that “prevents climate change by reducing carbon emissions”. On the other half, they chose whether to exert effort to benefit a charity that “prevents starvation by providing food”, providing a tightly matched non-climate control. The reward available (3 levels: 4, 12, 20 credits), effort required (4 levels: 50, 65, 80 or 95% of maximum), and cause (climate / food) were manipulated independently, allowing us to assess the impact of each and fit computational models that precisely quantify motivation to help each cause.
+
+## *Environmental benefits are devalued when they require effort*
+
+Our first analysis considered how the level of effort required and the amount of reward available affected decisions to take effortful actions that benefitted the environment or the control food charity. We used generalised linear mixed-effects models (GLMMs) to determine whether choices between working or resting were sensitive to effort and reward. First, we included only participants in the control group, collapsed across all six countries, to quantify effort and reward effects in the absence of any intervention (n=283). As predicted, people were more willing to work when the effort required was lower (GLMM odds ratio (OR) 
+95% confidence interval]=`r format(round(r.control.choice$Coefficient[r.control.choice$Parameter == "Reward"], digits=2), nsmall=2)`
+[`r format(round(r.control.choice$CI_low[r.control.choice$Parameter == "Reward"], digits=2), nsmall=2)`,
+`r format(round(r.control.choice$CI_high[r.control.choice$Parameter == "Reward"], digits=2), nsmall=2)`],
+*p*`r pvalrf(r.control.choice$p[r.control.choice$Parameter == "Reward"])`; Figure 2A) and when the benefit was greater
+(OR=`r format(round(r.control.choice$Coefficient[r.control.choice$Parameter == "Effort"], digits=2), nsmall=2)`
+[`r format(round(r.control.choice$CI_low[r.control.choice$Parameter == "Effort"], digits=2), nsmall=2)`,
+`r format(round(r.control.choice$CI_high[r.control.choice$Parameter == "Effort"], digits=2), nsmall=2)`],
+*p*`r pvalrf(r.control.choice$p[r.control.choice$Parameter == "Effort"])`; Figure 2B & Table S2).
+These significant effects of effort and reward were replicated in the full sample across intervention groups 
+(effort OR=`r format(round(r.full.choice$Coefficient[r.full.choice$Parameter == "Effort"], digits=2), nsmall=2)`
+[`r format(round(r.full.choice$CI_low[r.full.choice$Parameter == "Effort"], digits=2), nsmall=2)`,
+`r format(round(r.full.choice$CI_high[r.full.choice$Parameter == "Effort"], digits=2), nsmall=2)`],
+*p*`r pvalrf(r.full.choice$p[r.full.choice$Parameter == "Effort"])`;
+reward OR=`r format(round(r.full.choice$Coefficient[r.full.choice$Parameter == "Reward"], digits=2), nsmall=2)`
+[`r format(round(r.full.choice$CI_low[r.full.choice$Parameter == "Reward"], digits=2), nsmall=2)`,
+`r format(round(r.full.choice$CI_high[r.full.choice$Parameter == "Reward"], digits=2), nsmall=2)`],
+*p*`r pvalrf(r.full.choice$p[r.full.choice$Parameter == "Reward"])`) and in each country separately (Figure S1). In other words, people were more willing to take effortful actions to protect the environment and provide food when the positive impact was greater, or the action was easier. These analyses also support that the PEET provides a rapid and robust tool to analyse sensitivity to effort and reward in choices to help the environment.
+
+### Figure 2:
+
+```{r choice-figures, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=5, fig.width=10}
+
+plot.control.leg <- get_legend(plot.control.effort)
+plot.control.leg <- cowplot::plot_grid(NA, plot.control.leg, NA, nrow = 1, rel_widths = c(0.47,1,0.78))
+
+plot.control.eff.rew <- cowplot::plot_grid(choice.label,
+                                           plot.control.effort + theme(legend.position = "none"), 
+                                           plot.control.reward + theme(legend.position = "none"), 
+                                           plot.control.agent.id +  theme(legend.position = "none"), 
+                                           rel_widths = c(0.15,1,1,0.7), align = "h", labels = c("a", "", "b", "c"), nrow = 1)
+
+plot.control.eff.rew <- cowplot::plot_grid(plot.control.eff.rew, plot.control.leg, nrow = 2, rel_heights = c(1,0.15))
+
+control.title <- ggdraw() + 
+  draw_label("Control group (n=283)", fontface = 'bold', x = 0.5, hjust = 0.5, size = axtitle)
+
+plot.control.eff.rew <- cowplot::plot_grid(control.title, plot.control.eff.rew, nrow=2, rel_heights = c(0.2,1))
+
+print(plot.control.eff.rew)
+
+```
+**Figure 2. Effort, reward, and cause determine choices to exert effort for the climate and food charities in the Pro-Environmental Effort Task (PEET) (a)** Participants in the control group (n=283), who did not experience a pro-environmental intervention, were more willing to choose to exert physical effort for rewards when the level of effort required was lower. **(b)** Willingness to work was also higher when the reward available was larger. **(c)** Control participants were more willing to choose work to help the food charity compared to the climate charity. Asterisks between food and climate represent a significant effect (p<0.05) of cause in the GLMM of choices.
+
+## *Psychological interventions increase relative willingness to help the environment*
+
+After establishing that rewards for the climate and the food charity were devalued by the effort required to obtain them, we directly compared choices to work between the two tightly matched charities in the control group. Strikingly, control participants showed a significant bias towards helping the food charity, over the climate charity 
+(OR=`r format(round(r.control.choice$Coefficient[r.control.choice$Parameter == "Cause (Food > Climate)"], digits=2), nsmall=2)`
+[`r format(round(r.control.choice$CI_low[r.control.choice$Parameter == "Cause (Food > Climate)"], digits=2), nsmall=2)`,
+`r format(round(r.control.choice$CI_high[r.control.choice$Parameter == "Cause (Food > Climate)"], digits=2), nsmall=2)`],
+*p*`r pvalrf(r.control.choice$p[r.control.choice$Parameter == "Cause (Food > Climate)"])`; Figure 2C). This bias further emphasises the importance of identifying interventions that can boost pro-environmental motivation. 
+
+Next, we examined how the 11 interventions, developed based on psychological theories specifically to facilitate pro-environmental actions and selected by experts, affected willingness to put in effort to help the climate relative to the food charity. We tested the impact of each intervention compared to the control group using a GLMM (see Methods). To establish results were robust, we also accounted for demographic characteristics that might affect motivation, differing times since starting the study, and motivation to engage in the study. Thus, we ran three control analyses: (i) age and gender, (ii) how much time had elapsed since participants started the study, and (iii) pages completed on the Work for Environmental Protection Task (WEPT; see Methods), an existing decision-making task always completed before the PEET. 
+
+Of 11 interventions, three increased choices to help the climate charity relative to the food charity with effects robust across control analyses: Psychological Distance (PD), System Justification (SJ) and Negative Emotions (NE; GLMM cause\*intervention interactions control vs. PD OR=`r format(round(r.inter.choice.lin$Coefficient[r.inter.choice.lin$Parameter == "Cause (Food > Climate) * Psychological Distance"], digits=2), nsmall=2)`
+[`r format(round(r.inter.choice.lin$CI_low[r.inter.choice.lin$Parameter == "Cause (Food > Climate) * Psychological Distance"], digits=2), nsmall=2)`,
+`r format(round(r.inter.choice.lin$CI_high[r.inter.choice.lin$Parameter == "Cause (Food > Climate) * Psychological Distance"], digits=2), nsmall=2)`],
+*p*`r pvalrf(r.inter.choice.lin$p[r.inter.choice.lin$Parameter == "Cause (Food > Climate) * Psychological Distance"])`; 
+control vs. SJ OR=`r format(round(r.inter.choice.lin$Coefficient[r.inter.choice.lin$Parameter == "Cause (Food > Climate) * System Justification"], digits=2), nsmall=2)`
+[`r format(round(r.inter.choice.lin$CI_low[r.inter.choice.lin$Parameter == "Cause (Food > Climate) * System Justification"], digits=2), nsmall=2)`,
+`r format(round(r.inter.choice.lin$CI_high[r.inter.choice.lin$Parameter == "Cause (Food > Climate) * System Justification"], digits=2), nsmall=2)`],
+*p*`r pvalrf(r.inter.choice.lin$p[r.inter.choice.lin$Parameter == "Cause (Food > Climate) * System Justification"])`;
+control vs. NE OR=`r format(round(r.inter.choice.lin$Coefficient[r.inter.choice.lin$Parameter == "Cause (Food > Climate) * Negative Emotions"], digits=2), nsmall=2)`
+[`r format(round(r.inter.choice.lin$CI_low[r.inter.choice.lin$Parameter == "Cause (Food > Climate) * Negative Emotions"], digits=2), nsmall=2)`,
+`r format(round(r.inter.choice.lin$CI_high[r.inter.choice.lin$Parameter == "Cause (Food > Climate) * Negative Emotions"], digits=2), nsmall=2)`],
+*p*`r pvalrf(r.inter.choice.lin$p[r.inter.choice.lin$Parameter == "Cause (Food > Climate) * Negative Emotions"])`; Figure 3 & Figure S2). 
+A further intervention, Pluralistic Ignorance also significantly increased relative willingness to work for climate vs. food 
+(OR=`r format(round(r.inter.choice.lin$Coefficient[r.inter.choice.lin$Parameter == "Cause (Food > Climate) * Pluralistic Ignorance"], digits=2), nsmall=2)`
+[`r format(round(r.inter.choice.lin$CI_low[r.inter.choice.lin$Parameter == "Cause (Food > Climate) * Pluralistic Ignorance"], digits=2), nsmall=2)`,
+`r format(round(r.inter.choice.lin$CI_high[r.inter.choice.lin$Parameter == "Cause (Food > Climate) * Pluralistic Ignorance"], digits=2), nsmall=2)`],
+*p*=`r format(round(r.inter.choice.lin$p[r.inter.choice.lin$Parameter == "Cause (Food > Climate) * Pluralistic Ignorance"], digits=4), nsmall=4)`) 
+but this was not robust to controlling for age & gender 
+(OR=`r format(round(r.inter.choice.lin.agegen$Coefficient[r.inter.choice.lin.agegen$Parameter == "Cause (Food > Climate) * Pluralistic Ignorance"], digits=2), nsmall=2)`
+[`r format(round(r.inter.choice.lin.agegen$CI_low[r.inter.choice.lin.agegen$Parameter == "Cause (Food > Climate) * Pluralistic Ignorance"], digits=2), nsmall=2)`,
+`r format(round(r.inter.choice.lin.agegen$CI_high[r.inter.choice.lin.agegen$Parameter == "Cause (Food > Climate) * Pluralistic Ignorance"], digits=2), nsmall=2)`],
+*p*`r pvalrf(r.inter.choice.lin.agegen$p[r.inter.choice.lin.agegen$Parameter == "Cause (Food > Climate) * Pluralistic Ignorance"])`)
+or time in the study 
+(OR=`r format(round(r.inter.choice.lin.t1$Coefficient[r.inter.choice.lin.t1$Parameter == "Cause (Food > Climate) * Pluralistic Ignorance"], digits=2), nsmall=2)`
+[`r format(round(r.inter.choice.lin.t1$CI_low[r.inter.choice.lin.t1$Parameter == "Cause (Food > Climate) * Pluralistic Ignorance"], digits=2), nsmall=2)`,
+`r format(round(r.inter.choice.lin.t1$CI_high[r.inter.choice.lin.t1$Parameter == "Cause (Food > Climate) * Pluralistic Ignorance"], digits=2), nsmall=2)`],
+*p*`r pvalrf(r.inter.choice.lin.t1$p[r.inter.choice.lin.t1$Parameter == "Cause (Food > Climate) * Pluralistic Ignorance"])`; 
+Table S4 for full results and see Supplementary Results & Table S5 for control analyses on WEPT performance in our sample).
+
+### Figure 3
+
+```{r inter-choice-figures, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=6, fig.width=6}
+
+print(plot.inter.agent.sub)
+
+```
+**Figure 3. Positive impact of interventions on willingness to exert effort to help the climate relative to the food charity.** Comparing choices for each intervention against the control group showed robust evidence that Psychological Distance, System Justification, and Negative Emotions interventions significantly increased relative willingness to work for the climate. There was also some evidence to support the effectiveness of the intervention based on Pluralistic Ignorance. Values plotted are the difference between each intervention and the control group (vertical line at zero) in choices to work for the climate – choices to work for the food charity. Significance was tested through cause (climate / food) by intervention (vs. control) interactions in GLMMs. Asterisks and solid lines show interventions with significant interaction effects that are robust across all three control models (for age and gender, time on the survey before the PEET, and pages completed in the WEPT). Dashed lines show interventions with a significant effect in the main model or at least one control model. Dotted lines are interventions that do not significantly interact with the cause (climate / food) in any model.
+
+In summary, we identified several pro-environmental interventions that increased willingness to exert effort to help the climate, relative to willingness to help a non-climate cause. In particular, decreasing psychological distance between the participant and the changing environment, using system justification theory to promote pro-environmental action, and focusing on negative emotions about climate change increased relative willingness to help the environment. 
+
+## Computational models of effort discounting capture motivation to protect the environment
+
+[section in word as refs and no stats]
+
+## Changing pro-environmental motivation with psychological interventions
+
+We extracted the discounting *K* parameters from the best-fitting 2*K*1*\u03B2*-linear model and compared motivation to help the climate with motivation to provide food, first in the control group. Participants had higher discounting parameters for the climate charity than the food charity
+(OR=`r format(round(r.control.k$Coefficient[r.control.k$Parameter == "Cause (Food > Climate)"], digits=2), nsmall=2)`
+[`r format(round(r.control.k$CI_low[r.control.k$Parameter == "Cause (Food > Climate)"], digits=2), nsmall=2)`,
+`r format(round(r.control.k$CI_high[r.control.k$Parameter == "Cause (Food > Climate)"], digits=2), nsmall=2)`],
+*p*`r pvalrf(r.control.k$p[r.control.k$Parameter == "Cause (Food > Climate)"])`), demonstrating they devalued donations to the climate charity by the effort required to greater extent. We next examined if any intervention increased relative motivation to help the environment. Four interventions significantly reduced the food over climate bias (Figure 4C) with robust results across control analyses for age and gender, time in the study, and WEPT pages completed (Table S8). Three of these interventions that decreased relative discounting also positively affected choices to work in the model-free analysis: Psychological Distance 
+(OR=`r format(round(r.inter.k$Coefficient[r.inter.k$Parameter == "Cause (Food > Climate) * Psychological Distance"], digits=2), nsmall=2)`
+[`r format(round(r.inter.k$CI_low[r.inter.k$Parameter == "Cause (Food > Climate) * Psychological Distance"], digits=2), nsmall=2)`,
+`r format(round(r.inter.k$CI_high[r.inter.k$Parameter == "Cause (Food > Climate) * Psychological Distance"], digits=2), nsmall=2)`],
+*p*`r pvalrf(r.inter.k$p[r.inter.k$Parameter == "Cause (Food > Climate) * Psychological Distance"])`)
+System Justification 
+(OR=`r format(round(r.inter.k$Coefficient[r.inter.k$Parameter == "Cause (Food > Climate) * System Justification"], digits=2), nsmall=2)`
+[`r format(round(r.inter.k$CI_low[r.inter.k$Parameter == "Cause (Food > Climate) * System Justification"], digits=2), nsmall=2)`,
+`r format(round(r.inter.k$CI_high[r.inter.k$Parameter == "Cause (Food > Climate) * System Justification"], digits=2), nsmall=2)`],
+*p*`r pvalrf(r.inter.k$p[r.inter.k$Parameter == "Cause (Food > Climate) * System Justification"])`), and
+Pluralistic Ignorance 
+(OR=`r format(round(r.inter.k$Coefficient[r.inter.k$Parameter == "Cause (Food > Climate) * Pluralistic Ignorance"], digits=2), nsmall=2)`
+[`r format(round(r.inter.k$CI_low[r.inter.k$Parameter == "Cause (Food > Climate) * Pluralistic Ignorance"], digits=2), nsmall=2)`,
+`r format(round(r.inter.k$CI_high[r.inter.k$Parameter == "Cause (Food > Climate) * Pluralistic Ignorance"], digits=2), nsmall=2)`],
+*p*`r pvalrf(r.inter.k$p[r.inter.k$Parameter == "Cause (Food > Climate) * Pluralistic Ignorance"])`).
+In addition, Future Self-Continuity also decreased discounting 
+(OR=`r format(round(r.inter.k$Coefficient[r.inter.k$Parameter == "Cause (Food > Climate) * Future-Self Continuity"], digits=2), nsmall=2)`
+[`r format(round(r.inter.k$CI_low[r.inter.k$Parameter == "Cause (Food > Climate) * Future-Self Continuity"], digits=2), nsmall=2)`,
+`r format(round(r.inter.k$CI_high[r.inter.k$Parameter == "Cause (Food > Climate) * Future-Self Continuity"], digits=2), nsmall=2)`],
+*p*`r pvalrf(r.inter.k$p[r.inter.k$Parameter == "Cause (Food > Climate) * Future-Self Continuity"])`; see Table S8 for full results).
+
+Another strength of using computational modelling is that *K* parameters isolate discounting from decision consistency. We therefore evaluated whether interventions also changed decision consistency *\u03B2* parameters. We found no evidence that differences explained any of the significant intervention effects on choices or discounting (Figure 4D & Table S9). Only the Dynamic Social Norms intervention significantly differed from the control group, with greater consistency in choosing the option with higher subjective value following this intervention 
+(b=`r format(round(r.inter.beta$Coefficient[r.inter.beta$Parameter == "Dynamic Social Norms"], digits=2), nsmall=2)`
+[`r format(round(r.inter.beta$CI_low[r.inter.beta$Parameter == "Dynamic Social Norms"], digits=2), nsmall=2)`,
+`r format(round(r.inter.beta$CI_high[r.inter.beta$Parameter == "Dynamic Social Norms"], digits=2), nsmall=2)`],
+*p*`r pvalrf(r.inter.beta$p[r.inter.beta$Parameter == "Dynamic Social Norms"])`), but this was not robust across control analyses (Table S9).
+
+In summary, computational modelling revealed specific interventions significantly changed discounting of reward by effort in pro-environmental choices, independent of decision consistency. Interventions targeting Psychological Distance, System Justification and Pluralistic Ignorance robustly decreased relative discounting of climate vs. food compared to the control group, just as they increased relative willingness to choose the work offer. There was also some evidence an intervention promoting a sense of continuity with one’s future self effectively increased relative pro-environmental motivation.
+
+### Figure 4
+
+```{r inter-mod-figures, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=9.5, fig.width=9}
+
+intervention.plot <- cowplot::plot_grid(plot.inter.k.sub, NULL, plot.inter.beta.sub + theme(plot.background = element_rect(colour = "transparent")), ncol = 3, axis = "b", rel_widths = c(1.8,0.05,1.05), labels = c("c", "", "d"), label_x = c(0,0,-0.05))
+
+mi.pr.plot <- cowplot::plot_grid(bm.plot, ml.plot, ncol = 2, axis = "tb", labels = c("a", "b"), align = "h", rel_widths = c(1.05,1))
+
+model.plot <- cowplot::plot_grid(mi.pr.plot, intervention.plot, rel_heights = c(0.55,1), nrow = 2)
+
+print(model.plot)
+
+```
+**Figure 4. Computational modelling reveals interventions increase relative motivation to help the climate. We fit six computational models of effort discounting to the choice data. (a)** Model identifiability analysis shows a strong diagonal across the winning model confusion matrix, meaning the models can be accurately identified and the model comparison process is robust. **(b)** Strong parameter recovery for the best fitting, 2*Κ*1*\u03B2*-linear model is shown by the high correlations on the diagonal between simulated and recovered parameter values and low off-diagonal correlations. **(c)** Comparing discounting (*Κ*) parameters between causes for each intervention relative to the control group identifies four interventions robustly increase motivation (decrease discounting) for the climate vs. food: Psychological Distance, System Justification, Future-Self Continuity and Pluralistic Ignorance. Values plotted are the mean difference between each intervention and the control group (vertical line at zero) in motivation for the climate – motivation for the food charity. **(d)** In contrast, comparing decision noise (*\u03B2*) for each intervention to the control group, only the Dynamic Social Norms intervention showed any evidence of an intervention effect, and this was not robust across control analyses. Values are the mean *\u03B2* parameter in each condition with the mean for the control group shown with a vertical line. Asterisks and solid lines show interventions with significant effects (GLMM cause\*intervention for *Κ*, LMM intervention main effect for *\u03B2*) robust across all three control models (age and gender, time on the survey before the PEET, and WEPT pages completed). Dashed lines are interventions with a significant effect in at least one model (main or control). Dotted lines are interventions with no significant effects.
+
+## *Motivation to take action for the climate is specifically associated with pro-environmental attitudes and beliefs*
+
+An additional advantage of computational modelling is that the separate discounting K parameters precisely estimate motivation to exert effort to obtain rewards for each cause for each participant. This integrated measure can be used to examine how such motivation is related to individual difference in independent measures. In our final analyses, we combined data across interventions and tested whether motivation for effortful actions to help the environment (*Κ*<sub>climate</sub>) was associated with (i) climate-relevant measures of belief in human-made climate change and support for policies that protect the planet and (ii) general measures of trait apathy and current fatigue (see Methods). We also examined the same correlations for motivation to help the food charity (*Κ*<sub>food</sub>) to test the specificity of associations. 
+
+Motivation to exert effort for the climate was positively associated with belief in climate change (negative correlation with *Κ*s 
+*r*<sub>(`r corr.belief.clim.k[["n"]]`)</sub>=`r format(round(corr.belief.clim.k[["r"]], digits=2), nsmall=2)`
+[`r format(round(corr.belief.clim.k[["ci"]][["lower"]], digits=2), nsmall=2)`,
+`r format(round(corr.belief.clim.k[["ci"]][["upper"]], digits=2), nsmall=2)`],
+*p*`r pvalrf(corr.belief.clim.k[["p"]])`)
+and support for pro-environmental policies 
+(*r*<sub>(`r corr.policy.clim.k[["n"]]`)</sub>=`r format(round(corr.policy.clim.k[["r"]], digits=2), nsmall=2)`
+[`r format(round(corr.policy.clim.k[["ci"]][["lower"]], digits=2), nsmall=2)`,
+`r format(round(corr.policy.clim.k[["ci"]][["upper"]], digits=2), nsmall=2)`]
+*p*`r pvalrf(corr.policy.clim.k[["p"]])`). 
+Importantly, these associations between climate-relevant measures and pro-environmental motivation were significantly stronger than the corresponding correlations with motivation to help the food cause 
+(belief *r*<sub>(`r corr.belief.food.k[["n"]]`)</sub>=`r format(round(corr.belief.food.k[["r"]], digits=2), nsmall=2)`
+[`r format(round(corr.belief.food.k[["ci"]][["lower"]], digits=2), nsmall=2)`,
+`r format(round(corr.belief.food.k[["ci"]][["upper"]], digits=2), nsmall=2)`],
+*p*`r pvalrf(corr.belief.food.k[["p"]])`; 
+difference
+Z=`r format(round(corr.belief.comp.k[["z"]], digits=2), nsmall=2)`,
+*p*`r pvalrf(corr.belief.comp.k[["p"]])`; Figure 5A;
+policy support
+*r*<sub>(`r corr.policy.food.k[["n"]]`)</sub>=`r format(round(corr.policy.food.k[["r"]], digits=2), nsmall=2)`
+[`r format(round(corr.policy.food.k[["ci"]][["lower"]], digits=2), nsmall=2)`,
+`r format(round(corr.policy.food.k[["ci"]][["upper"]], digits=2), nsmall=2)`],
+*p*`r pvalrf(corr.policy.food.k[["p"]])`;
+difference
+Z=`r format(round(corr.policy.comp.k[["z"]], digits=2), nsmall=2)`,
+*p*`r pvalrf(corr.policy.comp.k[["p"]])`; Figure 5B).
+In contrast, broader measures of trait apathy and how subjectively effortful participants found the highest effort level, showed significant negative associations for both climate motivation and food motivation, with no significant difference between causes 
+(*Κ*<sub>climate</sub> & apathy *r*<sub>(`r corr.ami.clim.k[["n"]]`)</sub>=`r format(round(corr.ami.clim.k[["r"]], digits=2), nsmall=2)`
+[`r format(round(corr.ami.clim.k[["ci"]][["lower"]], digits=2), nsmall=2)`,
+`r format(round(corr.ami.clim.k[["ci"]][["upper"]], digits=2), nsmall=2)`],
+*p*`r pvalrf(corr.ami.clim.k[["p"]])`; 
+*Κ*<sub>food</sub> & apathy *r*<sub>(`r corr.ami.food.k[["n"]]`)</sub>=`r format(round(corr.ami.food.k[["r"]], digits=2), nsmall=2)`
+[`r format(round(corr.ami.food.k[["ci"]][["lower"]], digits=2), nsmall=2)`,
+`r format(round(corr.ami.food.k[["ci"]][["upper"]], digits=2), nsmall=2)`],
+*p*`r pvalrf(corr.ami.food.k[["p"]])`; 
+difference Z=`r format(round(corr.ami.comp.k[["z"]], digits=2), nsmall=2)`,
+*p*`r pvalrf(corr.ami.comp.k[["p"]])`; Figure 5C;
+*Κ*<sub>climate</sub> & subjective effort *r*<sub>(`r corr.nasa.clim.k[["n"]]`)</sub>=`r format(round(corr.nasa.clim.k[["r"]], digits=2), nsmall=2)`
+[`r format(round(corr.nasa.clim.k[["ci"]][["lower"]], digits=2), nsmall=2)`,
+`r format(round(corr.nasa.clim.k[["ci"]][["upper"]], digits=2), nsmall=2)`],
+*p*`r pvalrf(corr.nasa.clim.k[["p"]])`; 
+*Κ*<sub>food</sub> & apathy *r*<sub>(`r corr.nasa.food.k[["n"]]`)</sub>=`r format(round(corr.nasa.food.k[["r"]], digits=2), nsmall=2)`
+[`r format(round(corr.nasa.food.k[["ci"]][["lower"]], digits=2), nsmall=2)`,
+`r format(round(corr.nasa.food.k[["ci"]][["upper"]], digits=2), nsmall=2)`],
+*p*`r pvalrf(corr.nasa.food.k[["p"]])`; difference Z=`r format(round(corr.nasa.comp.k[["z"]], digits=2), nsmall=2)`,
+*p*`r pvalrf(corr.nasa.comp.k[["p"]])`; Figure 5D).
+Finally, we examined associations between pages completed in the WEPT and motivation to help each cause. WEPT performance was positively correlated with motivation for both the climate 
+(*r*<sub>(`r corr.wept.clim.k[["n"]]`)</sub>=`r format(round(corr.wept.clim.k[["r"]], digits=2), nsmall=2)`
+[`r format(round(corr.wept.clim.k[["ci"]][["lower"]], digits=2), nsmall=2)`,
+`r format(round(corr.wept.clim.k[["ci"]][["upper"]], digits=2), nsmall=2)`],
+*p*`r pvalrf(corr.wept.clim.k[["p"]])`
+and food 
+(*r*<sub>(`r corr.wept.food.k[["n"]]`)</sub>=`r format(round(corr.wept.food.k[["r"]], digits=2), nsmall=2)`
+[`r format(round(corr.wept.food.k[["ci"]][["lower"]], digits=2), nsmall=2)`,
+`r format(round(corr.wept.food.k[["ci"]][["upper"]], digits=2), nsmall=2)`],
+*p*`r pvalrf(corr.wept.food.k[["p"]])`) 
+charities, but importantly with no significant difference in the strength of these correlations 
+(Z=`r format(round(corr.wept.comp.k[["z"]], digits=2), nsmall=2)`,
+*p*`r pvalrf(corr.wept.comp.k[["p"]])`; Figure 5E). 
+Together these results highlight the specificity of variability in motivation to help the climate driving individual differences in climate-relevant outcomes, but also that general motivation is an important factor in increasing willingness to exert effort for any cause.
+
+### Figure 5
+
+```{r inddiffs-k-figures, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=9, fig.width=10}
+
+plot.k.ind.diffs <- cowplot::plot_grid(k.label, plot.k.belief, 
+                                        # k.label, 
+                                       plot.k.ami, 
+                                        # k.label, 
+                                       plot.k.wept, 
+                                       k.label, plot.k.policy, 
+                                       # k.label, 
+                                       plot.k.nasa, 
+                                       # NA, 
+                                       legend.fc, ncol = 4, 
+                                       rel_widths = c(0.15,1,1,1),
+                                       axis = "rltb", align = "h", labels = c("", "a", "c", "e", "", "b", "d", ""))
+
+print(plot.k.ind.diffs)
+
+```
+**Figure 5. Individual differences in pro-environmental motivation are specifically associated with climate beliefs and policy support.** Motivation to help the climate, captured in participants’ discounting *K* parameters, was associated with **(a)** beliefs that climate-change is humman-made 
+(*r*<sub>(`r corr.belief.clim.k[["n"]]`)</sub>=`r format(round(corr.belief.clim.k[["r"]], digits=2), nsmall=2)`
+[`r format(round(corr.belief.clim.k[["ci"]][["lower"]], digits=2), nsmall=2)`,
+`r format(round(corr.belief.clim.k[["ci"]][["upper"]], digits=2), nsmall=2)`],
+*p*`r pvalrf(corr.belief.clim.k[["p"]])`)
+and **(b)** support for policies that protect the environment 
+(*r*<sub>(`r corr.policy.clim.k[["n"]]`)</sub>=`r format(round(corr.policy.clim.k[["r"]], digits=2), nsmall=2)`
+[`r format(round(corr.policy.clim.k[["ci"]][["lower"]], digits=2), nsmall=2)`,
+`r format(round(corr.policy.clim.k[["ci"]][["upper"]], digits=2), nsmall=2)`]
+*p*`r pvalrf(corr.policy.clim.k[["p"]])`).
+These associations between pro-environmental motivation (*K*<sub>climate</sub>) and climate-relevant measures were significantly stronger than the corresponding association for motivation for the food charity (*K*<sub>food</sub>; belief difference 
+Z=`r format(round(corr.belief.comp.k[["z"]], digits=2), nsmall=2)`,
+*p*`r pvalrf(corr.belief.comp.k[["p"]])`; policy support difference 
+Z=`r format(round(corr.policy.comp.k[["z"]], digits=2), nsmall=2)`,
+*p*`r pvalrf(corr.policy.comp.k[["p"]])`). 
+Considering measures of general motivation, both **(c)** trait apathy and **(d)** self-reported ratings of subjective effort were negatively associated with motivation for both the climate and food charity, with no significant differences between these correlations 
+(*Κ*<sub>climate</sub> & apathy *r*<sub>(`r corr.ami.clim.k[["n"]]`)</sub>=`r format(round(corr.ami.clim.k[["r"]], digits=2), nsmall=2)`
+[`r format(round(corr.ami.clim.k[["ci"]][["lower"]], digits=2), nsmall=2)`,
+`r format(round(corr.ami.clim.k[["ci"]][["upper"]], digits=2), nsmall=2)`],
+*p*`r pvalrf(corr.ami.clim.k[["p"]])`; 
+*Κ*<sub>food</sub> & apathy *r*<sub>(`r corr.ami.food.k[["n"]]`)</sub>=`r format(round(corr.ami.food.k[["r"]], digits=2), nsmall=2)`
+[`r format(round(corr.ami.food.k[["ci"]][["lower"]], digits=2), nsmall=2)`,
+`r format(round(corr.ami.food.k[["ci"]][["upper"]], digits=2), nsmall=2)`],
+*p*`r pvalrf(corr.ami.food.k[["p"]])`; 
+difference Z=`r format(round(corr.ami.comp.k[["z"]], digits=2), nsmall=2)`,
+*p*`r pvalrf(corr.ami.comp.k[["p"]])`; 
+*Κ*<sub>climate</sub> & subjective effort *r*<sub>(`r corr.nasa.clim.k[["n"]]`)</sub>=`r format(round(corr.nasa.clim.k[["r"]], digits=2), nsmall=2)`
+[`r format(round(corr.nasa.clim.k[["ci"]][["lower"]], digits=2), nsmall=2)`,
+`r format(round(corr.nasa.clim.k[["ci"]][["upper"]], digits=2), nsmall=2)`],
+*p*`r pvalrf(corr.nasa.clim.k[["p"]])`; 
+*Κ*<sub>food</sub> & apathy *r*<sub>(`r corr.nasa.food.k[["n"]]`)</sub>=`r format(round(corr.nasa.food.k[["r"]], digits=2), nsmall=2)`
+[`r format(round(corr.nasa.food.k[["ci"]][["lower"]], digits=2), nsmall=2)`,
+`r format(round(corr.nasa.food.k[["ci"]][["upper"]], digits=2), nsmall=2)`],
+*p*`r pvalrf(corr.nasa.food.k[["p"]])`; difference Z=`r format(round(corr.nasa.comp.k[["z"]], digits=2), nsmall=2)`,
+*p*`r pvalrf(corr.nasa.comp.k[["p"]])`).
+**(e)** the number of pages completed on the Work for Environmental Protection Task (WEPT) also positively correlated with motivation (lower *K*) to help both causes (climate (*r*<sub>(`r corr.wept.clim.k[["n"]]`)</sub>=`r format(round(corr.wept.clim.k[["r"]], digits=2), nsmall=2)`
+[`r format(round(corr.wept.clim.k[["ci"]][["lower"]], digits=2), nsmall=2)`,
+`r format(round(corr.wept.clim.k[["ci"]][["upper"]], digits=2), nsmall=2)`],
+*p*`r pvalrf(corr.wept.clim.k[["p"]])`; food 
+*r*<sub>(`r corr.wept.food.k[["n"]]`)</sub>=`r format(round(corr.wept.food.k[["r"]], digits=2), nsmall=2)`
+[`r format(round(corr.wept.food.k[["ci"]][["lower"]], digits=2), nsmall=2)`,
+`r format(round(corr.wept.food.k[["ci"]][["upper"]], digits=2), nsmall=2)`],
+*p*`r pvalrf(corr.wept.food.k[["p"]])`)
+with no significant difference between these correlations
+(Z=`r format(round(corr.wept.comp.k[["z"]], digits=2), nsmall=2)`,
+*p*`r pvalrf(corr.wept.comp.k[["p"]])`).
+
+# Supplement
+
+```{r inter-figures, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=12, fig.width=6}
+
+plot.country <- cowplot::plot_grid(plot.full.effort.country, legend.fc.long, plot.full.reward.country + theme(legend.position = "none"), nrow = 3, align = "lrbt", labels = "auto", rel_heights = c(1,0.15,1))
+
+print(plot.country)
+
+```
+**Figure S1.**
+
+```{r choice-inter-figures, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=9, fig.width=10}
+
+plot.inters.eff.rew <- cowplot::plot_grid(choice.label,
+                                          NA,
+                                          choice.label,
+                                          plot.psydis.effort, 
+                                          NA,
+                                          plot.psydis.reward + theme(legend.position = "none"), 
+                                          plot.sysjus.effort, 
+                                          legend.fc.long,
+                                          plot.sysjus.reward + theme(legend.position = "none"), 
+                                          plot.negemo.effort, 
+                                          NA,
+                                          plot.negemo.reward + theme(legend.position = "none"), 
+                                          labels = c("a", "", "b", "c", "", "", "", "", "d", "", "e", "f"), 
+                                          nrow = 3, byrow = F, rel_widths = c(0.15,1,1,1), rel_heights = c(1,0.2,1))
+
+print(plot.inters.eff.rew)
+
+```
+**Figure S2.**
+
+**Table S2.**
+```{r control-choice-results, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=5, fig.width=5}
+
+r.control.choice <- r.control.choice %>% 
+  mutate(p = pvalr(p))
+
+if (writecsvs == 1) {write.csv(x = r.control.choice, file = "tables/Results_control_choice_lin.csv", row.names = F)}
+
+kable(r.control.choice,
+      digits = 2,
+      align = c('l',rep('c',(ncol(r.control.choice)-1))),
+      caption = "GLMM of choices in control group") %>% kable_styling()
+```
+
+**Table S3.**
+```{r full-choice-results, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=5, fig.width=5}
+
+r.full.choice <- r.full.choice %>%
+  mutate(p = pvalr(p))
+
+if (writecsvs == 1) {write.csv(x = r.full.choice, file = "tables/Results_full_choice_lin.csv", row.names = F)}
+
+kable(r.full.choice,
+      digits = 2,
+      align = c('l',rep('c',(ncol(r.full.choice)-1))),
+      caption = "GLMM of choices in full sample") %>% kable_styling()
+
+```
+
+**Table S4.**
+```{r inter-choice-lin-results, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=5, fig.width=5}
+
+r.inter.choice.lin <- r.inter.choice.lin %>% 
+  mutate(p = pvalr(p)) %>% 
+  mutate(agegen_p = pvalr(agegen_p)) %>%
+  mutate(t1_p = pvalr(t1_p)) %>%
+  mutate(wept_p = pvalr(wept_p))
+
+if (writecsvs == 1) {write.csv(x = r.inter.choice.lin, file = "tables/Results_inter_choice_lin.csv", row.names = F)}
+
+kable(r.inter.choice.lin,
+      digits = 2,
+      align = c('l',rep('c',(ncol(r.inter.choice.lin)-1))),
+      caption = "GLMM of choices in full sample - interventions") %>% kable_styling()
+
+```
+
+**Table S5.**
+```{r inter-wept-results, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=5, fig.width=5}
+
+r.inter.wept <- r.inter.wept %>% 
+  mutate(p = pvalr(p)) %>% 
+  mutate(p_exc = pvalr(p_exc)) 
+  
+if (writecsvs == 1) {write.csv(x = r.inter.wept, file = "tables/Results_inter_wept.csv", row.names = F)}
+
+kable(r.inter.wept,
+      digits = 2,
+      align = c('l',rep('c',(ncol(r.inter.wept)-1))),
+      caption = "CLMM of WEPT in sample with and without PEET exclusions") %>% kable_styling()
+
+```
+
+
+**Table S6.** 
+Model comparison
+
+**Table S7.**
+```{r inter-choice-sq-results, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=5, fig.width=5}
+
+r.inter.choice.sq <- r.inter.choice.sq %>% 
+  mutate(p = pvalr(p)) %>% 
+  mutate(agegen_p = pvalr(agegen_p)) %>%
+  mutate(t1_p = pvalr(t1_p)) %>%
+  mutate(wept_p = pvalr(wept_p))
+
+if (writecsvs == 1) {write.csv(x = r.inter.choice.sq, file = "tables/Results_inter_choice_sq.csv", row.names = F)}
+
+kable(r.inter.choice.sq,
+      digits = 2,
+      align = c('l',rep('c',(ncol(r.inter.choice.sq)-1))),
+      caption = "GLMM of choices in full sample - interventions, effort squared") %>% kable_styling()
+
+```
+
+**Table S8.**
+```{r inter-k-results, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=5, fig.width=5}
+
+r.inter.k <- r.inter.k %>% 
+  mutate(p = pvalr(p)) %>% 
+  mutate(agegen_p = pvalr(agegen_p)) %>% 
+  mutate(t1_p = pvalr(t1_p)) %>% 
+  mutate(wept_p = pvalr(wept_p))
+  
+if (writecsvs == 1) {write.csv(x = r.inter.k, file = "tables/Results_inter_k.csv", row.names = F)}
+
+kable(r.inter.k,
+      digits = 2,
+      align = c('l',rep('c',(ncol(r.inter.k)-1))),
+      caption = "GLMM of Ks in full sample - interventions") %>% kable_styling()
+
+```
+
+**Table S9.** 
+```{r inter-beta-results, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=5, fig.width=5}
+
+r.inter.beta <- r.inter.beta %>% 
+  mutate(p = pvalr(p)) %>% 
+  mutate(agegen_p = pvalr(agegen_p)) %>% 
+  mutate(t1_p = pvalr(t1_p)) %>% 
+  mutate(wept_p = pvalr(wept_p))
+  
+if (writecsvs == 1) {write.csv(x = r.inter.beta, file = "tables/Results_inter_beta.csv", row.names = F)}
+
+kable(r.inter.beta,
+      digits = 2,
+      align = c('l',rep('c',(ncol(r.inter.beta)-1))),
+      caption = "GLMM of betas in full sample - interventions") %>% kable_styling()
+
+```

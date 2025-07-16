@@ -1,4 +1,3 @@
-base
 pacman
 Matrix
 lme4
@@ -24,6 +23,7 @@ lavaan
 lemon
 lmerTest
 magrittr
+maps
 MASS
 mvtnorm
 sandwich
@@ -49,5 +49,3 @@ dplyr
 stringr
 forcats
 lubridate
-survival
-Formula

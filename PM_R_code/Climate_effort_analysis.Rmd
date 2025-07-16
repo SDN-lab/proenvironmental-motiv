@@ -45,6 +45,7 @@ pacman::p_load(afex,
                lme4, 
                lmerTest,
                magrittr,
+               maps,
                mediation,
                ordinal,
                parameters, 
@@ -179,7 +180,7 @@ paper.theme = list(theme(panel.background = element_rect(fill='transparent'),
 
 choice.lab <- "Choices to work"
 k.lab <- "Effort discounting"
-k.lab <- 'Motivation (*\u039A*)'
+k.lab <- 'Motivation (inverse *\u039A* )'
 k.symbol <- '*\u039A*'
 beta.lab <- "Decision<br>stochasticity (*\u03B2*)"
 wept.lab <- "WEPT"
@@ -369,6 +370,7 @@ d.tbt.full <- d.tbt.full %>%
   mutate(effortsq = effort.c^2) %>% 
   mutate(effortsq.sc = scale(effortsq)) %>% 
   mutate(intervention = factor(intervention)) %>% 
+  mutate(Age.raw = Age) %>% 
   mutate(Age = scale(Age)) %>%
   mutate(wept = scale(wept)) %>%
   mutate(belief = scale(belief)) %>%
@@ -410,6 +412,7 @@ d.mod.full.wide <- left_join(d.mod.full.wide, unique(d.tbt.full %>% select("ui",
 
 d.mod.full <- d.mod.full.wide %>%
   pivot_longer(cols = starts_with(c("food-", "climate-"), ignore.case = F), names_to = c("agent", ".value"), names_sep = "-") %>%
+  mutate(Age.raw = Age) %>% 
   mutate(Age = scale(Age)) %>% 
   mutate(agent = factor(agent, levels = c("food", "climate"), labels = c("Food", "Climate"))) %>%
   mutate(intervention = factor(intervention))
@@ -452,17 +455,29 @@ df$intername <- factor(df$condName, levels = names)
 
 ages <- d.mod.full.wide %>% 
   group_by(country) %>% 
-  summarise(mean_age = mean(Age, na.rm = TRUE), min_age = min(Age, na.rm = TRUE), max_age = max(Age, na.rm = TRUE), n =n())
+  summarise(mean_age = mean(Age.raw, na.rm = TRUE), min_age = min(Age.raw, na.rm = TRUE), max_age = max(Age.raw, na.rm = TRUE), n =n())
 
 demographics <- d.mod.full.wide %>% 
   group_by(country) %>% 
   count(Gender_all) %>% 
   pivot_wider(names_from = c(Gender_all), values_from = n) %>% 
   left_join(y = ages, by = "country") %>% 
-  mutate(mean_age = round(mean_age, 2)) %>% 
-  mutate(female_per = round(female / n * 100))
+  mutate(mean_age = round(mean_age, 2)) 
+
+demographics$unknown[is.na(demographics$unknown)] <- 0
+demographics$other[is.na(demographics$other)] <- 0
+demographics$otherunknown <- demographics$unknown + demographics$other
 
 rm(ages)
+
+ns <- d.mod.full.wide %>% 
+  group_by(country, intervention) %>% 
+  summarise(n =n()) %>% 
+  pivot_wider(id_cols = intervention, names_from = country, values_from = n) %>% 
+  add_column(name = names.f, .before = "intervention") %>% 
+  select(!intervention)
+
+if (writecsvs == 1) {write.csv(x = ns, file = "tables/Ns_by_country_inter.csv", row.names = F, col.names = F, na = "0")}
 
 ```
 
@@ -645,26 +660,64 @@ save(m.us.no2i, file = "output/model_us_no2i.RData")
 
 ```{r choice-posthocs, echo=FALSE, message=FALSE, warning=FALSE, results='asis', cache=TRUE}
 
+# compare raw choices between recipients for each of successful interventions
+
 d.ag.full <- d.tbt.full %>% 
   group_by(agent, ui, intername) %>% 
   summarise(choice = mean(decision.num))
 
-d.ag.control <- d.ag.full %>% subset(intername == "Control")
-d.ag.exp <- d.ag.full %>% subset(intername != "Control")
+# PsychDistance
 
-con.ag.control.bf <- ttestBF(d.ag.control$choice[d.ag.control$agent == "Food"],
-                             d.ag.control$choice[d.ag.control$agent == "Climate"], 
-                             paired = T)
+con.ag.PD.wc <- wilcox.test(d.ag.full$choice[d.ag.full$agent == "Food" & d.ag.full$intername == "PsychDistance"],
+                            d.ag.full$choice[d.ag.full$agent == "Climate" & d.ag.full$intername == "PsychDistance"], 
+                            paired = T)
 
-con.ag.control.bf01 <- 1 / con.ag.control.bf
-con.ag.control.bf01 <- extractBF(con.ag.control.bf01)
+con.ag.PD.bf <- ttestBF(d.ag.full$choice[d.ag.full$agent == "Food" & d.ag.full$intername == "PsychDistance"],
+                        d.ag.full$choice[d.ag.full$agent == "Climate" & d.ag.full$intername == "PsychDistance"], 
+                        paired = T)
 
-con.ag.exp.bf <- ttestBF(d.ag.exp$choice[d.ag.exp$agent == "Food"],
-                         d.ag.exp$choice[d.ag.exp$agent == "Climate"], 
-                         paired = T)
+con.ag.PD.bf01 <- 1 / con.ag.PD.bf
+con.ag.PD.bf01 <- extractBF(con.ag.PD.bf01)
 
-con.ag.exp.bf01 <- 1 / con.ag.exp.bf
-con.ag.exp.bf01 <- extractBF(con.ag.exp.bf01)
+# SystemJust
+
+con.ag.SJ.wc <- wilcox.test(d.ag.full$choice[d.ag.full$agent == "Food" & d.ag.full$intername == "SystemJust"],
+                            d.ag.full$choice[d.ag.full$agent == "Climate" & d.ag.full$intername == "SystemJust"], 
+                            paired = T)
+
+con.ag.SJ.bf <- ttestBF(d.ag.full$choice[d.ag.full$agent == "Food" & d.ag.full$intername == "SystemJust"],
+                        d.ag.full$choice[d.ag.full$agent == "Climate" & d.ag.full$intername == "SystemJust"], 
+                        paired = T)
+
+con.ag.SJ.bf01 <- 1 / con.ag.SJ.bf
+con.ag.SJ.bf01 <- extractBF(con.ag.SJ.bf01)
+
+# NegativeEmotions
+
+con.ag.NE.wc <- wilcox.test(d.ag.full$choice[d.ag.full$agent == "Food" & d.ag.full$intername == "NegativeEmotions"],
+                            d.ag.full$choice[d.ag.full$agent == "Climate" & d.ag.full$intername == "NegativeEmotions"], 
+                            paired = T)
+
+con.ag.NE.bf <- ttestBF(d.ag.full$choice[d.ag.full$agent == "Food" & d.ag.full$intername == "NegativeEmotions"],
+                        d.ag.full$choice[d.ag.full$agent == "Climate" & d.ag.full$intername == "NegativeEmotions"], 
+                        paired = T)
+
+con.ag.NE.bf01 <- 1 / con.ag.NE.bf
+con.ag.NE.bf01 <- extractBF(con.ag.NE.bf01)
+
+d.full <- d.tbt.full %>% 
+  group_by(ui, intername) %>% 
+  summarise(choice = mean(decision.num)) %>% 
+  mutate(choice.ceiling = choice == 1)
+
+d.mod.full.wide$wept.ceiling <- d.mod.full.wide$wept == 8
+d.mod.full.wide <- left_join(d.mod.full.wide, d.full %>% select(c(ui, choice.ceiling)), by = "ui")
+
+ceilings <- pivot_longer(d.mod.full.wide %>% select(contains("ceiling")), cols = contains("ceiling"))
+
+# table(ceilings$wept.ceiling, ceilings$peet.ceiling)
+# 
+# chisq.test(table(ceilings$name, ceilings$value))
 
 ``` 
 
@@ -838,19 +891,59 @@ save(m.full.k.g.log, file = "output/model_full_k.RData")
 
 ```{r k-posthocs, echo=FALSE, message=FALSE, warning=FALSE, results='asis', cache=TRUE}
 
-con.k.control.bf <- ttestBF(d.mod.control$k[d.mod.control$agent == "Food"],
-                             d.mod.control$k[d.mod.control$agent == "Climate"], 
-                             paired = T)
+# compare ks between recipients for each of successful interventions
 
-con.k.control.bf01 <- 1 / con.k.control.bf
-con.k.control.bf01 <- extractBF(con.k.control.bf01)
+# PsychDistance
 
-con.k.exp.bf <- ttestBF(d.mod.control$k[d.mod.control$agent == "Food"],
-                         d.mod.control$k[d.mod.control$agent == "Climate"], 
-                         paired = T)
+con.k.PD.wc <- wilcox.test(d.mod.full$k[d.mod.full$agent == "Food" & d.mod.full$intername == "PsychDistance"],
+                            d.mod.full$k[d.mod.full$agent == "Climate" & d.mod.full$intername == "PsychDistance"], 
+                            paired = T)
 
-con.k.exp.bf01 <- 1 / con.k.exp.bf
-con.k.exp.bf01 <- extractBF(con.k.exp.bf01)
+con.k.PD.bf <- ttestBF(d.mod.full$k[d.mod.full$agent == "Food" & d.mod.full$intername == "PsychDistance"],
+                        d.mod.full$k[d.mod.full$agent == "Climate" & d.mod.full$intername == "PsychDistance"], 
+                        paired = T)
+
+con.k.PD.bf01 <- 1 / con.k.PD.bf
+con.k.PD.bf01 <- extractBF(con.k.PD.bf01)
+
+# SystemJust
+
+con.k.SJ.wc <- wilcox.test(d.mod.full$k[d.mod.full$agent == "Food" & d.mod.full$intername == "SystemJust"],
+                            d.mod.full$k[d.mod.full$agent == "Climate" & d.mod.full$intername == "SystemJust"], 
+                            paired = T)
+
+con.k.SJ.bf <- ttestBF(d.mod.full$k[d.mod.full$agent == "Food" & d.mod.full$intername == "SystemJust"],
+                        d.mod.full$k[d.mod.full$agent == "Climate" & d.mod.full$intername == "SystemJust"], 
+                        paired = T)
+
+con.k.SJ.bf01 <- 1 / con.k.SJ.bf
+con.k.SJ.bf01 <- extractBF(con.k.SJ.bf01)
+
+# PluralIgnorance
+
+con.k.PI.wc <- wilcox.test(d.mod.full$k[d.mod.full$agent == "Food" & d.mod.full$intername == "PluralIgnorance"],
+                            d.mod.full$k[d.mod.full$agent == "Climate" & d.mod.full$intername == "PluralIgnorance"], 
+                            paired = T)
+
+con.k.PI.bf <- ttestBF(d.mod.full$k[d.mod.full$agent == "Food" & d.mod.full$intername == "PluralIgnorance"],
+                        d.mod.full$k[d.mod.full$agent == "Climate" & d.mod.full$intername == "PluralIgnorance"], 
+                        paired = T)
+
+con.k.PI.bf01 <- 1 / con.k.PI.bf
+con.k.PI.bf01 <- extractBF(con.k.PI.bf01)
+
+# FutureSelfCont
+
+con.k.FSC.wc <- wilcox.test(d.mod.full$k[d.mod.full$agent == "Food" & d.mod.full$intername == "FutureSelfCont"],
+                            d.mod.full$k[d.mod.full$agent == "Climate" & d.mod.full$intername == "FutureSelfCont"], 
+                            paired = T)
+
+con.k.FSC.bf <- ttestBF(d.mod.full$k[d.mod.full$agent == "Food" & d.mod.full$intername == "FutureSelfCont"],
+                        d.mod.full$k[d.mod.full$agent == "Climate" & d.mod.full$intername == "FutureSelfCont"], 
+                        paired = T)
+
+con.k.FSC.bf01 <- 1 / con.k.FSC.bf
+con.k.FSC.bf01 <- extractBF(con.k.FSC.bf01)
 
 ```
 
@@ -1142,7 +1235,6 @@ con.inter.choice.rg <- emtrends(m.inter.choice.lin.use, pairwise ~ intervention,
 
 con.full.choice.rg <- as.data.frame(con.inter.choice.rg[["emtrends"]]) %>% 
   add_column(term = "Effect of reward in each group", .before = "reward.sc.trend")
-
 
 ``` 
 
@@ -1538,7 +1630,7 @@ save(m.inter.beta, file = "output/model_inter_beta.RData")
 
 ```
 
-```{r beta-controls-models, echo=FALSE, message=FALSE, warning=FALSE, results='asis', cache=TRUE}
+```{r beta-controls-models, echo=FALSE, message=FALSE, warning=FALSE, results='asis', cache=TRUE, eval=FALSE}
 
 # time to finish first survey
 
@@ -1749,7 +1841,8 @@ world_map <- map_data("world") %>%
 country.samples <- d.mod.full.wide %>% 
   group_by(country) %>% 
   count() %>% 
-  rename(region = country)
+  rename(region = country) %>% 
+  mutate(region = as.character(region))
 
 country.samples$region[country.samples$region == "US"] <- "USA"
 
@@ -2365,32 +2458,43 @@ Bulgaria
 (n=`r demographics$n[demographics$country == "Bulgaria"]`
 age `r demographics$min_age[demographics$country == "Bulgaria"]`-`r demographics$max_age[demographics$country == "Bulgaria"]`, 
 mean=`r demographics$mean_age[demographics$country == "Bulgaria"]`,
-`r demographics$female_per[demographics$country == "Bulgaria"]`% female), 
+`r demographics$female[demographics$country == "Bulgaria"]` female,
+`r demographics$male[demographics$country == "Bulgaria"]` male,
+`r demographics$otherunknown[demographics$country == "Bulgaria"]` other/unknown gender), 
 Greece
 (n=`r demographics$n[demographics$country == "Greece"]`: see Methods,
 age `r demographics$min_age[demographics$country == "Greece"]`-`r demographics$max_age[demographics$country == "Greece"]`, 
 mean=`r demographics$mean_age[demographics$country == "Greece"]`,
-`r demographics$female_per[demographics$country == "Greece"]`% female), 
+`r demographics$female[demographics$country == "Greece"]` female,
+`r demographics$male[demographics$country == "Greece"]` male,
+`r demographics$otherunknown[demographics$country == "Greece"]` other/unknown gender), 
 Nigeria
 (n=`r demographics$n[demographics$country == "Nigeria"]`
 age `r demographics$min_age[demographics$country == "Nigeria"]`-`r demographics$max_age[demographics$country == "Nigeria"]`, 
 mean=`r demographics$mean_age[demographics$country == "Nigeria"]`,
-`r demographics$female_per[demographics$country == "Nigeria"]`% female), 
+`r demographics$female[demographics$country == "Nigeria"]` female,
+`r demographics$male[demographics$country == "Nigeria"]` male), 
 Sweden
 (n=`r demographics$n[demographics$country == "Sweden"]`
 age `r demographics$min_age[demographics$country == "Sweden"]`-`r demographics$max_age[demographics$country == "Sweden"]`, 
 mean=`r demographics$mean_age[demographics$country == "Sweden"]`,
-`r demographics$female_per[demographics$country == "Sweden"]`% female), 
+`r demographics$female[demographics$country == "Sweden"]` female,
+`r demographics$male[demographics$country == "Sweden"]` male,
+`r demographics$otherunknown[demographics$country == "Sweden"]` other/unknown gender), 
 UK
 (n=`r demographics$n[demographics$country == "UK"]`
 age `r demographics$min_age[demographics$country == "UK"]`-`r demographics$max_age[demographics$country == "UK"]`, 
 mean=`r demographics$mean_age[demographics$country == "UK"]`,
-`r demographics$female_per[demographics$country == "UK"]`% female), 
+`r demographics$female[demographics$country == "UK"]` female,
+`r demographics$male[demographics$country == "UK"]` male,
+`r demographics$otherunknown[demographics$country == "UK"]` other/unknown gender), 
 and USA
 (n=`r demographics$n[demographics$country == "US"]`
 age `r demographics$min_age[demographics$country == "US"]`-`r demographics$max_age[demographics$country == "US"]`, 
 mean=`r demographics$mean_age[demographics$country == "US"]`,
-`r demographics$female_per[demographics$country == "US"]`% female; 
+`r demographics$female[demographics$country == "US"]` female,
+`r demographics$male[demographics$country == "US"]` male,
+`r demographics$otherunknown[demographics$country == "US"]` other/unknown gender; 
 Figure 1A). Participants were randomly assigned to one of 11 interventions or the control group[REFS] (see Methods & Table S1) and completed the novel Pro-Environmental Effort Task (PEET; Figure 1B). First, participants clicked as many boxes as possible within 10 seconds to evaluate their maximum capability and all subsequent effort levels were tailored to this. Then on each trial, participants chose between a no-effort, low-reward “rest” option and a high-effort high-reward “work” option. On half of the trials, the reward was for an environmental charity that “prevents climate change by reducing carbon emissions”. On the other half, they chose whether to exert effort to benefit a charity that “prevents starvation by providing food”, providing a tightly matched non-climate control. The reward available (3 levels: 4, 12, 20 credits), effort required (4 levels: 50, 65, 80 or 95% of maximum), and cause (climate / food) were manipulated independently, allowing us to assess the impact of each and fit computational models that precisely quantify motivation to help each cause.
 
 ## *Environmental benefits are devalued when they require effort*
@@ -2416,7 +2520,7 @@ reward OR=`r format(round(r.full.choice$Coefficient[r.full.choice$Parameter == "
 
 ### Figure 2:
 
-```{r choice-figures, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=5, fig.width=10}
+```{r choice-figures, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=5, fig.width=10, cache=TRUE}
 
 plot.control.leg <- get_legend(plot.control.effort)
 plot.control.leg <- cowplot::plot_grid(NA, plot.control.leg, NA, nrow = 1, rel_widths = c(0.47,1,0.78))
@@ -2460,8 +2564,16 @@ control vs. SJ OR=`r format(round(r.inter.choice.lin$Coefficient[r.inter.choice.
 control vs. NE OR=`r format(round(r.inter.choice.lin$Coefficient[r.inter.choice.lin$Parameter == "Cause (Food > Climate) * Negative Emotions"], digits=2), nsmall=2)`
 [`r format(round(r.inter.choice.lin$CI_low[r.inter.choice.lin$Parameter == "Cause (Food > Climate) * Negative Emotions"], digits=2), nsmall=2)`,
 `r format(round(r.inter.choice.lin$CI_high[r.inter.choice.lin$Parameter == "Cause (Food > Climate) * Negative Emotions"], digits=2), nsmall=2)`],
-*p*`r pvalrf(r.inter.choice.lin$p[r.inter.choice.lin$Parameter == "Cause (Food > Climate) * Negative Emotions"])`; Figure 3 & Figure S2). 
-A further intervention, Pluralistic Ignorance also significantly increased relative willingness to work for climate vs. food 
+*p*`r pvalrf(r.inter.choice.lin$p[r.inter.choice.lin$Parameter == "Cause (Food > Climate) * Negative Emotions"])`; Figure 3 & Figure S2).Participants who completed these interventions did not show the bias to help the food cause over the climate found in the control group, with Bayesian evidence of no difference between causes (Wilcoxon test 
+PD V=`r con.ag.PD.wc$statistic`, 
+*p*=`r format(round(con.ag.PD.wc$p.value, digits=2), nsmall=2)`, 
+BF<sub>01</sub>=`r format(round(con.ag.PD.bf01$bf, digits=2), nsmall=2)`; 
+SJ V=`r con.ag.SJ.wc$statistic`, 
+*p*=`r format(round(con.ag.SJ.wc$p.value, digits=2), nsmall=2)`, 
+BF<sub>01</sub>=`r format(round(con.ag.SJ.bf01$bf, digits=2), nsmall=2)`; 
+NE V=`r con.ag.NE.wc$statistic`, 
+*p*=`r format(round(con.ag.NE.wc$p.value, digits=2), nsmall=2)`, 
+BF<sub>01</sub>=`r format(round(con.ag.NE.bf01$bf, digits=2), nsmall=2)`). A further intervention, Pluralistic Ignorance also significantly increased relative willingness to work for climate vs. food 
 (OR=`r format(round(r.inter.choice.lin$Coefficient[r.inter.choice.lin$Parameter == "Cause (Food > Climate) * Pluralistic Ignorance"], digits=2), nsmall=2)`
 [`r format(round(r.inter.choice.lin$CI_low[r.inter.choice.lin$Parameter == "Cause (Food > Climate) * Pluralistic Ignorance"], digits=2), nsmall=2)`,
 `r format(round(r.inter.choice.lin$CI_high[r.inter.choice.lin$Parameter == "Cause (Food > Climate) * Pluralistic Ignorance"], digits=2), nsmall=2)`],
@@ -2480,7 +2592,7 @@ Table S4 for full results and see Supplementary Results & Table S5 for control a
 
 ### Figure 3
 
-```{r inter-choice-figures, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=6, fig.width=6}
+```{r inter-choice-figures, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=6, fig.width=6, cache=TRUE}
 
 print(plot.inter.agent.sub)
 
@@ -2520,6 +2632,20 @@ In addition, Future Self-Continuity also decreased discounting
 `r format(round(r.inter.k$CI_high[r.inter.k$Parameter == "Cause (Food > Climate) * Future-Self Continuity"], digits=2), nsmall=2)`],
 *p*`r pvalrf(r.inter.k$p[r.inter.k$Parameter == "Cause (Food > Climate) * Future-Self Continuity"])`; see Table S8 for full results).
 
+Again, these interventions completely eliminated the food over climate bias seen in the control group (Wilcoxon test 
+PD V=`r format(con.k.PD.wc$statistic, sceintific=FALSE)`, 
+*p*=`r format(round(con.k.PD.wc$p.value, digits=2), nsmall=2)`, 
+BF<sub>01</sub>=`r format(round(con.k.PD.bf01$bf, digits=2), nsmall=2)`; 
+SJ V=`r format(con.k.SJ.wc$statistic, sceintific=FALSE)`, 
+*p*=`r format(round(con.k.SJ.wc$p.value, digits=2), nsmall=2)`, 
+BF<sub>01</sub>=`r format(round(con.k.SJ.bf01$bf, digits=2), nsmall=2)`; 
+PI V=`r format(con.k.PI.wc$statistic, sceintific=FALSE)`, 
+*p*=`r format(round(con.k.PI.wc$p.value, digits=2), nsmall=2)`, 
+BF<sub>01</sub>=`r format(round(con.k.PI.bf01$bf, digits=2), nsmall=2)`;
+FSC V=`r format(con.k.FSC.wc$statistic, sceintific=FALSE)`, 
+*p*=`r format(round(con.k.FSC.wc$p.value, digits=2), nsmall=2)`, 
+BF<sub>01</sub>=`r format(round(con.k.FSC.bf01$bf, digits=2), nsmall=2)`).
+
 Another strength of using computational modelling is that *K* parameters isolate discounting from decision consistency. We therefore evaluated whether interventions also changed decision consistency *\u03B2* parameters. We found no evidence that differences explained any of the significant intervention effects on choices or discounting (Figure 4D & Table S9). Only the Dynamic Social Norms intervention significantly differed from the control group, with greater consistency in choosing the option with higher subjective value following this intervention 
 (b=`r format(round(r.inter.beta$Coefficient[r.inter.beta$Parameter == "Dynamic Social Norms"], digits=2), nsmall=2)`
 [`r format(round(r.inter.beta$CI_low[r.inter.beta$Parameter == "Dynamic Social Norms"], digits=2), nsmall=2)`,
@@ -2530,15 +2656,15 @@ In summary, computational modelling revealed specific interventions significantl
 
 ### Figure 4
 
-```{r inter-mod-figures, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=9.5, fig.width=9}
+```{r inter-mod-figures, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=9.5, fig.width=9, cache=TRUE}
 
-intervention.plot <- cowplot::plot_grid(plot.inter.k.sub, NULL, plot.inter.beta.sub + theme(plot.background = element_rect(colour = "transparent")), ncol = 3, axis = "b", rel_widths = c(1.8,0.05,1.05), labels = c("c", "", "d"), label_x = c(0,0,-0.05))
-
-mi.pr.plot <- cowplot::plot_grid(bm.plot, ml.plot, ncol = 2, axis = "tb", labels = c("a", "b"), align = "h", rel_widths = c(1.05,1))
-
-model.plot <- cowplot::plot_grid(mi.pr.plot, intervention.plot, rel_heights = c(0.55,1), nrow = 2)
-
-print(model.plot)
+# intervention.plot <- cowplot::plot_grid(plot.inter.k.sub, NULL, plot.inter.beta.sub + theme(plot.background = element_rect(colour = "transparent")), ncol = 3, axis = "b", rel_widths = c(1.8,0.05,1.05), labels = c("c", "", "d"), label_x = c(0,0,-0.05))
+# 
+# mi.pr.plot <- cowplot::plot_grid(bm.plot, ml.plot, ncol = 2, axis = "tb", labels = c("a", "b"), align = "h", rel_widths = c(1.05,1))
+# 
+# model.plot <- cowplot::plot_grid(mi.pr.plot, intervention.plot, rel_heights = c(0.55,1), nrow = 2)
+# 
+# print(model.plot)
 
 ```
 **Figure 4. Computational modelling reveals interventions increase relative motivation to help the climate. We fit six computational models of effort discounting to the choice data. (a)** Model identifiability analysis shows a strong diagonal across the winning model confusion matrix, meaning the models can be accurately identified and the model comparison process is robust. **(b)** Strong parameter recovery for the best fitting, 2*Κ*1*\u03B2*-linear model is shown by the high correlations on the diagonal between simulated and recovered parameter values and low off-diagonal correlations. **(c)** Comparing discounting (*Κ*) parameters between causes for each intervention relative to the control group identifies four interventions robustly increase motivation (decrease discounting) for the climate vs. food: Psychological Distance, System Justification, Future-Self Continuity and Pluralistic Ignorance. Values plotted are the mean difference between each intervention and the control group (vertical line at zero) in motivation for the climate – motivation for the food charity. **(d)** In contrast, comparing decision noise (*\u03B2*) for each intervention to the control group, only the Dynamic Social Norms intervention showed any evidence of an intervention effect, and this was not robust across control analyses. Values are the mean *\u03B2* parameter in each condition with the mean for the control group shown with a vertical line. Asterisks and solid lines show interventions with significant effects (GLMM cause\*intervention for *Κ*, LMM intervention main effect for *\u03B2*) robust across all three control models (age and gender, time on the survey before the PEET, and WEPT pages completed). Dashed lines are interventions with a significant effect in at least one model (main or control). Dotted lines are interventions with no significant effects.
@@ -2610,7 +2736,7 @@ Together these results highlight the specificity of variability in motivation to
 
 ### Figure 5
 
-```{r inddiffs-k-figures, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=9, fig.width=10}
+```{r inddiffs-k-figures, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=9, fig.width=10, cache=TRUE}
 
 plot.k.ind.diffs <- cowplot::plot_grid(k.label, plot.k.belief, 
                                         # k.label, 
@@ -2677,7 +2803,7 @@ with no significant difference between these correlations
 
 # Supplement
 
-```{r inter-figures, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=12, fig.width=6}
+```{r inter-figures, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=12, fig.width=6, cache=TRUE}
 
 plot.country <- cowplot::plot_grid(plot.full.effort.country, legend.fc.long, plot.full.reward.country + theme(legend.position = "none"), nrow = 3, align = "lrbt", labels = "auto", rel_heights = c(1,0.15,1))
 
@@ -2686,7 +2812,7 @@ print(plot.country)
 ```
 **Figure S1.**
 
-```{r choice-inter-figures, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=9, fig.width=10}
+```{r choice-inter-figures, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=9, fig.width=10, cache=TRUE}
 
 plot.inters.eff.rew <- cowplot::plot_grid(choice.label,
                                           NA,
@@ -2709,7 +2835,7 @@ print(plot.inters.eff.rew)
 **Figure S2.**
 
 **Table S2.**
-```{r control-choice-results, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=5, fig.width=5}
+```{r control-choice-results, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=5, fig.width=5, cache=TRUE}
 
 r.control.choice <- r.control.choice %>% 
   mutate(p = pvalr(p))
@@ -2723,7 +2849,7 @@ kable(r.control.choice,
 ```
 
 **Table S3.**
-```{r full-choice-results, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=5, fig.width=5}
+```{r full-choice-results, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=5, fig.width=5, cache=TRUE}
 
 r.full.choice <- r.full.choice %>%
   mutate(p = pvalr(p))
@@ -2738,7 +2864,7 @@ kable(r.full.choice,
 ```
 
 **Table S4.**
-```{r inter-choice-lin-results, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=5, fig.width=5}
+```{r inter-choice-lin-results, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=5, fig.width=5, cache=TRUE}
 
 r.inter.choice.lin <- r.inter.choice.lin %>% 
   mutate(p = pvalr(p)) %>% 
@@ -2756,7 +2882,7 @@ kable(r.inter.choice.lin,
 ```
 
 **Table S5.**
-```{r inter-wept-results, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=5, fig.width=5}
+```{r inter-wept-results, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=5, fig.width=5, cache=TRUE}
 
 r.inter.wept <- r.inter.wept %>% 
   mutate(p = pvalr(p)) %>% 
@@ -2776,7 +2902,7 @@ kable(r.inter.wept,
 Model comparison
 
 **Table S7.**
-```{r inter-choice-sq-results, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=5, fig.width=5}
+```{r inter-choice-sq-results, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=5, fig.width=5, cache=TRUE}
 
 r.inter.choice.sq <- r.inter.choice.sq %>% 
   mutate(p = pvalr(p)) %>% 
@@ -2794,7 +2920,7 @@ kable(r.inter.choice.sq,
 ```
 
 **Table S8.**
-```{r inter-k-results, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=5, fig.width=5}
+```{r inter-k-results, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=5, fig.width=5, cache=TRUE}
 
 r.inter.k <- r.inter.k %>% 
   mutate(p = pvalr(p)) %>% 
@@ -2812,7 +2938,7 @@ kable(r.inter.k,
 ```
 
 **Table S9.** 
-```{r inter-beta-results, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=5, fig.width=5}
+```{r inter-beta-results, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=5, fig.width=5, cache=TRUE}
 
 r.inter.beta <- r.inter.beta %>% 
   mutate(p = pvalr(p)) %>% 

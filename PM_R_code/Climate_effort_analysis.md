@@ -129,34 +129,45 @@ We tested our preregistered hypotheses in samples from six countries, recruited 
 n=3055 from
 Bulgaria
 (n=404
-age -1.5702-2.0231, 
-mean=0.01,
-48% female), 
+age 18-72, 
+mean=41.73,
+195 female,
+206 male,
+3 other/unknown gender), 
 Greece
 (n=85: see Methods,
-age -1.5037-1.2911, 
-mean=-0.3,
-48% female), 
+age 19-61, 
+mean=37.05,
+41 female,
+43 male,
+1 other/unknown gender), 
 Nigeria
 (n=660
-age -1.5702-1.7569, 
-mean=-0.62,
-39% female), 
+age 18-68, 
+mean=32.27,
+259 female,
+401 male), 
 Sweden
 (n=1090
-age -1.5702-2.1562, 
-mean=0.08,
-52% female), 
+age 18-74, 
+mean=42.84,
+567 female,
+512 male,
+11 other/unknown gender), 
 UK
 (n=482
-age -1.5702-2.1562, 
-mean=0.42,
-56% female), 
+age 18-74, 
+mean=47.96,
+270 female,
+211 male,
+1 other/unknown gender), 
 and USA
 (n=334
-age -1.5037-2.1562, 
-mean=0.41,
-59% female; 
+age 19-74, 
+mean=47.78,
+197 female,
+135 male,
+2 other/unknown gender; 
 Figure 1A). Participants were randomly assigned to one of 11 interventions or the control group[REFS] (see Methods & Table S1) and completed the novel Pro-Environmental Effort Task (PEET; Figure 1B). First, participants clicked as many boxes as possible within 10 seconds to evaluate their maximum capability and all subsequent effort levels were tailored to this. Then on each trial, participants chose between a no-effort, low-reward “rest” option and a high-effort high-reward “work” option. On half of the trials, the reward was for an environmental charity that “prevents climate change by reducing carbon emissions”. On the other half, they chose whether to exert effort to benefit a charity that “prevents starvation by providing food”, providing a tightly matched non-climate control. The reward available (3 levels: 4, 12, 20 credits), effort required (4 levels: 50, 65, 80 or 95% of maximum), and cause (climate / food) were manipulated independently, allowing us to assess the impact of each and fit computational models that precisely quantify motivation to help each cause.
 
 ## *Environmental benefits are devalued when they require effort*
@@ -206,8 +217,16 @@ control vs. SJ OR=0.86
 control vs. NE OR=0.85
 [0.74,
 0.99],
-*p*=0.036; Figure 3 & Figure S2). 
-A further intervention, Pluralistic Ignorance also significantly increased relative willingness to work for climate vs. food 
+*p*=0.036; Figure 3 & Figure S2).Participants who completed these interventions did not show the bias to help the food cause over the climate found in the control group, with Bayesian evidence of no difference between causes (Wilcoxon test 
+PD V=6004, 
+*p*=0.17, 
+BF<sub>01</sub>=6.76; 
+SJ V=9222, 
+*p*=0.75, 
+BF<sub>01</sub>=13.76; 
+NE V=6762, 
+*p*=0.79, 
+BF<sub>01</sub>=12.00). A further intervention, Pluralistic Ignorance also significantly increased relative willingness to work for climate vs. food 
 (OR=0.86
 [0.74,
 1.00],
@@ -262,6 +281,20 @@ In addition, Future Self-Continuity also decreased discounting
 1.08],
 *p*=0.027; see Table S8 for full results).
 
+Again, these interventions completely eliminated the food over climate bias seen in the control group (Wilcoxon test 
+PD V=15615, 
+*p*=0.40, 
+BF<sub>01</sub>=8.76; 
+SJ V=19057, 
+*p*=0.95, 
+BF<sub>01</sub>=13.17; 
+PI V=18543, 
+*p*=0.74, 
+BF<sub>01</sub>=14.80;
+FSC V=10608, 
+*p*=0.52, 
+BF<sub>01</sub>=12.91).
+
 Another strength of using computational modelling is that *K* parameters isolate discounting from decision consistency. We therefore evaluated whether interventions also changed decision consistency *\u03B2* parameters. We found no evidence that differences explained any of the significant intervention effects on choices or discounting (Figure 4D & Table S9). Only the Dynamic Social Norms intervention significantly differed from the control group, with greater consistency in choosing the option with higher subjective value following this intervention 
 (b=0.13
 [0.02,
@@ -272,7 +305,7 @@ In summary, computational modelling revealed specific interventions significantl
 
 ### Figure 4
 
-<img src="Climate_effort_analysis_files/figure-html/inter-mod-figures-1.png" style="display: block; margin: auto;" />
+
 **Figure 4. Computational modelling reveals interventions increase relative motivation to help the climate. We fit six computational models of effort discounting to the choice data. (a)** Model identifiability analysis shows a strong diagonal across the winning model confusion matrix, meaning the models can be accurately identified and the model comparison process is robust. **(b)** Strong parameter recovery for the best fitting, 2*Κ*1*\u03B2*-linear model is shown by the high correlations on the diagonal between simulated and recovered parameter values and low off-diagonal correlations. **(c)** Comparing discounting (*Κ*) parameters between causes for each intervention relative to the control group identifies four interventions robustly increase motivation (decrease discounting) for the climate vs. food: Psychological Distance, System Justification, Future-Self Continuity and Pluralistic Ignorance. Values plotted are the mean difference between each intervention and the control group (vertical line at zero) in motivation for the climate – motivation for the food charity. **(d)** In contrast, comparing decision noise (*\u03B2*) for each intervention to the control group, only the Dynamic Social Norms intervention showed any evidence of an intervention effect, and this was not robust across control analyses. Values are the mean *\u03B2* parameter in each condition with the mean for the control group shown with a vertical line. Asterisks and solid lines show interventions with significant effects (GLMM cause\*intervention for *Κ*, LMM intervention main effect for *\u03B2*) robust across all three control models (age and gender, time on the survey before the PEET, and WEPT pages completed). Dashed lines are interventions with a significant effect in at least one model (main or control). Dotted lines are interventions with no significant effects.
 
 ## *Motivation to take action for the climate is specifically associated with pro-environmental attitudes and beliefs*
@@ -399,7 +432,7 @@ with no significant difference between these correlations
 **Figure S2.**
 
 **Table S2.**
-<table class="table" style="margin-left: auto; margin-right: auto;">
+<table class="table" style="color: black; margin-left: auto; margin-right: auto;">
 <caption>GLMM of choices in control group</caption>
  <thead>
   <tr>
@@ -453,7 +486,7 @@ with no significant difference between these correlations
 </table>
 
 **Table S3.**
-<table class="table" style="margin-left: auto; margin-right: auto;">
+<table class="table" style="color: black; margin-left: auto; margin-right: auto;">
 <caption>GLMM of choices in full sample</caption>
  <thead>
   <tr>
@@ -507,7 +540,7 @@ with no significant difference between these correlations
 </table>
 
 **Table S4.**
-<table class="table" style="margin-left: auto; margin-right: auto;">
+<table class="table" style="color: black; margin-left: auto; margin-right: auto;">
 <caption>GLMM of choices in full sample - interventions</caption>
  <thead>
   <tr>
@@ -840,7 +873,7 @@ with no significant difference between these correlations
 </table>
 
 **Table S5.**
-<table class="table" style="margin-left: auto; margin-right: auto;">
+<table class="table" style="color: black; margin-left: auto; margin-right: auto;">
 <caption>CLMM of WEPT in sample with and without PEET exclusions</caption>
  <thead>
   <tr>
@@ -1033,7 +1066,7 @@ with no significant difference between these correlations
 Model comparison
 
 **Table S7.**
-<table class="table" style="margin-left: auto; margin-right: auto;">
+<table class="table" style="color: black; margin-left: auto; margin-right: auto;">
 <caption>GLMM of choices in full sample - interventions, effort squared</caption>
  <thead>
   <tr>
@@ -1366,7 +1399,7 @@ Model comparison
 </table>
 
 **Table S8.**
-<table class="table" style="margin-left: auto; margin-right: auto;">
+<table class="table" style="color: black; margin-left: auto; margin-right: auto;">
 <caption>GLMM of Ks in full sample - interventions</caption>
  <thead>
   <tr>
@@ -1700,7 +1733,7 @@ Model comparison
 </table>
 
 **Table S9.** 
-<table class="table" style="margin-left: auto; margin-right: auto;">
+<table class="table" style="color: black; margin-left: auto; margin-right: auto;">
 <caption>GLMM of betas in full sample - interventions</caption>
  <thead>
   <tr>

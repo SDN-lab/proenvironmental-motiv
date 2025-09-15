@@ -19,6 +19,7 @@ Hmisc
 lpSolve
 irr
 kableExtra
+knitr
 lavaan
 lemon
 lmerTest

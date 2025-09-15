@@ -32,6 +32,7 @@ pacman::p_load(afex,
                cowplot,
                effectsize,
                emmeans,
+               ggbreak,
                ggeffects,
                ggforce,
                ggpubr,
@@ -40,6 +41,7 @@ pacman::p_load(afex,
                Hmisc,
                irr,
                kableExtra,
+               knitr,
                lavaan,
                lemon,
                lme4, 
@@ -181,16 +183,16 @@ paper.theme = list(theme(panel.background = element_rect(fill='transparent'),
 choice.lab <- "Choices to work"
 k.lab <- "Effort discounting"
 k.lab <- 'Motivation (inverse *\u039A* )'
-k.symbol <- '*\u039A*'
-beta.lab <- "Decision<br>stochasticity (*\u03B2*)"
+k.symbol <- '*\u039A* '
+beta.lab <- "Decision<br>stochasticity (*\u03B2* )"
 wept.lab <- "WEPT"
 wept.lab.br <- "WEPT tree<br>planting"
 belief.lab <- "Belief"
 policy.lab <- "Policy support"
 ami.lab <- "Apathy"
 nasa.lab <- "Subjective effort"
-models <- c('2<i>\u039A</i>1<i>\u03B2</i> p', '2<i>\u039A</i>1<i>\u03B2</i> l', '2<i>\u039A</i>1<i>\u03B2</i> h',
-            '2<i>\u039A</i>2<i>\u03B2</i> p', '2<i>\u039A</i>2<i>\u03B2</i> l', '2<i>\u039A</i>2<i>\u03B2</i> h')
+models <- c('2<i>\u039A   </i>1<i>\u03B2</i> p', '2<i>\u039A   </i>1<i>\u03B2</i> l', '2<i>\u039A   </i>1<i>\u03B2</i> h',
+            '2<i>\u039A   </i>2<i>\u03B2</i> p', '2<i>\u039A   </i>2<i>\u03B2</i> l', '2<i>\u039A   </i>2<i>\u03B2</i> h')
 
 sig.order <- c("PD","SJ","NE", "PI", "FSC")
 sig.names <- c("PsychDistance", "SystemJust", "NegativeEmotions", "PluralIgnorance", "FutureSelfCont")
@@ -1878,7 +1880,11 @@ plot.control.effort <- ggplot(d.tbt.control, aes(x = effort.c,  y = decision.num
   scale_color_manual(limits=agent.lims, values=agent.cols) +
   scale_linetype_manual(limits=agent.lims, values=agent.lines) +
   scale_x_continuous(breaks = c(2,3,4,5)) + 
-  coord_cartesian(ylim = c(0.7,0.91)) +  
+  coord_cartesian(ylim = c(0.68,0.91), xlim = c(2,5), clip = "off") +
+  annotate("segment", x = 1.75, xend = 1.95, y = 0.68, yend = 0.685,
+           size = 0.5, colour = "black") +
+  annotate("segment", x = 1.75, xend = 1.95, y = 0.685, yend = 0.69,
+           size = 0.5, colour = "black") +
   labs(x = "Effort Required", y = choice.lab) +
   # ggtitle("Control group") +
   theme_classic() +
@@ -1893,7 +1899,11 @@ plot.psydis.effort <- ggplot(d.tbt.exp %>% subset(intername == "PsychDistance"),
   scale_color_manual(limits=agent.lims, values=agent.cols) +
   scale_linetype_manual(limits=agent.lims, values=agent.lines) +
   scale_x_continuous(breaks = c(2,3,4,5)) + 
-  coord_cartesian(ylim = c(0.68,0.91)) +  
+  coord_cartesian(ylim = c(0.68,0.91), xlim = c(2,5), clip = "off") +
+  annotate("segment", x = 1.75, xend = 1.95, y = 0.68, yend = 0.685,
+           size = 0.5, colour = "black") +
+  annotate("segment", x = 1.75, xend = 1.95, y = 0.685, yend = 0.69,
+           size = 0.5, colour = "black") + 
   labs(x = "Effort Required", y = choice.lab) +
   ggtitle("Psych. Distance") +
   theme_classic() +
@@ -1915,7 +1925,11 @@ plot.sysjus.effort <- ggplot(d.tbt.exp %>% subset(intername == "SystemJust"), ae
   scale_color_manual(limits=agent.lims, values=agent.cols) +
   scale_linetype_manual(limits=agent.lims, values=agent.lines) +
   scale_x_continuous(breaks = c(2,3,4,5)) + 
-  coord_cartesian(ylim = c(0.68,0.91)) +  
+  coord_cartesian(ylim = c(0.68,0.91), xlim = c(2,5), clip = "off") +
+  annotate("segment", x = 1.75, xend = 1.95, y = 0.68, yend = 0.685,
+           size = 0.5, colour = "black") +
+  annotate("segment", x = 1.75, xend = 1.95, y = 0.685, yend = 0.69,
+           size = 0.5, colour = "black") +
   labs(x = "Effort Required", y = choice.lab) +
   ggtitle("System Just.") +
   theme_classic() +
@@ -1931,7 +1945,11 @@ plot.negemo.effort <- ggplot(d.tbt.exp %>% subset(intername == "NegativeEmotions
   scale_color_manual(limits=agent.lims, values=agent.cols) +
   scale_linetype_manual(limits=agent.lims, values=agent.lines) +
   scale_x_continuous(breaks = c(2,3,4,5)) + 
-  coord_cartesian(ylim = c(0.68,0.91)) +  
+  coord_cartesian(ylim = c(0.68,0.91), xlim = c(2,5), clip = "off") +
+  annotate("segment", x = 1.75, xend = 1.95, y = 0.68, yend = 0.685,
+           size = 0.5, colour = "black") +
+  annotate("segment", x = 1.75, xend = 1.95, y = 0.685, yend = 0.69,
+           size = 0.5, colour = "black") + 
   labs(x = "Effort Required", y = choice.lab) +
   ggtitle("Neg. Emotions") +
   theme_classic() +
@@ -1947,7 +1965,7 @@ plot.full.effort <- ggplot(d.tbt.full, aes(x = effort.c,  y = decision.num, fill
   scale_color_manual(limits=agent.lims, values=agent.cols) +
   scale_linetype_manual(limits=agent.lims, values=agent.lines) +
   scale_x_continuous(breaks = c(2,3,4,5)) + 
-  coord_cartesian(ylim = c(0.7,0.91)) +  
+  coord_cartesian(ylim = c(0.68,0.95), xlim = c(2,5), clip = "off") +
   labs(x = "Effort Required", y = choice.lab) +
   # ggtitle("Full sample") +
   theme_classic() +
@@ -1958,8 +1976,10 @@ plot.full.effort <- ggplot(d.tbt.full, aes(x = effort.c,  y = decision.num, fill
 # print(plot.full.effort)
 
 plot.full.effort.country <- plot.full.effort  + 
-  coord_cartesian(ylim = c(0.68,0.95)) +
-  facet_wrap("country")
+  facet_wrap("country") +
+  coord_cartesian(ylim = c(0.68,0.95), xlim = c(2,5), clip = "off") +
+  geom_segment(data = data.frame(country = c("Bulgaria", "Sweden")), aes(x = 1.75, xend = 1.95, y = 0.68, yend = 0.685), inherit.aes = FALSE) +
+  geom_segment(data = data.frame(country = c("Bulgaria", "Sweden")), aes(x = 1.75, xend = 1.95, y = 0.685, yend = 0.69), inherit.aes = FALSE)
 
 # print(plot.full.effort.country)
 
@@ -1970,7 +1990,11 @@ plot.control.reward <- ggplot(d.tbt.control, aes(x = reward.c,  y = decision.num
   scale_color_manual(limits=agent.lims, values=agent.cols) +
   scale_linetype_manual(limits=agent.lims, values=agent.lines) +
   scale_x_continuous(breaks = c(2,3,4)) + 
-  coord_cartesian(ylim = c(0.7,0.91)) +  
+  coord_cartesian(ylim = c(0.68,0.91), xlim = c(2,4), clip = "off") +
+  annotate("segment", x = 1.83, xend = 1.97, y = 0.68, yend = 0.685,
+           size = 0.5, colour = "black") +
+  annotate("segment", x = 1.83, xend = 1.97, y = 0.685, yend = 0.69,
+           size = 0.5, colour = "black") +
   labs(x = "Reward Available", y = choice.lab) +
   # ggtitle("Control group") +
   theme_classic() +
@@ -1985,7 +2009,11 @@ plot.psydis.reward <- ggplot(d.tbt.exp %>% subset(intername == "PsychDistance"),
   scale_color_manual(limits=agent.lims, values=agent.cols) +
   scale_linetype_manual(limits=agent.lims, values=agent.lines) +
   scale_x_continuous(breaks = c(2,3,4)) + 
-  coord_cartesian(ylim = c(0.68,0.91)) +  
+  coord_cartesian(ylim = c(0.68,0.91), xlim = c(2,4), clip = "off") +
+  annotate("segment", x = 1.83, xend = 1.97, y = 0.68, yend = 0.685,
+           size = 0.5, colour = "black") +
+  annotate("segment", x = 1.83, xend = 1.97, y = 0.685, yend = 0.69,
+           size = 0.5, colour = "black") +
   labs(x = "Reward Available", y = choice.lab) +
   # ggtitle("Psychological Distance") +
   theme_classic() +
@@ -2000,7 +2028,11 @@ plot.sysjus.reward <- ggplot(d.tbt.exp %>% subset(intername == "SystemJust"), ae
   scale_color_manual(limits=agent.lims, values=agent.cols) +
   scale_linetype_manual(limits=agent.lims, values=agent.lines) +
   scale_x_continuous(breaks = c(2,3,4)) + 
-  coord_cartesian(ylim = c(0.68,0.91)) +  
+  coord_cartesian(ylim = c(0.68,0.91), xlim = c(2,4), clip = "off") +
+  annotate("segment", x = 1.83, xend = 1.97, y = 0.68, yend = 0.685,
+           size = 0.5, colour = "black") +
+  annotate("segment", x = 1.83, xend = 1.97, y = 0.685, yend = 0.69,
+           size = 0.5, colour = "black") +
   labs(x = "Reward Available", y = choice.lab) +
   # ggtitle("System Justification") +
   theme_classic() +
@@ -2015,7 +2047,11 @@ plot.negemo.reward <- ggplot(d.tbt.exp %>% subset(intername == "NegativeEmotions
   scale_color_manual(limits=agent.lims, values=agent.cols) +
   scale_linetype_manual(limits=agent.lims, values=agent.lines) +
   scale_x_continuous(breaks = c(2,3,4)) + 
-  coord_cartesian(ylim = c(0.68,0.91)) +  
+  coord_cartesian(ylim = c(0.68,0.91), xlim = c(2,4), clip = "off") +
+  annotate("segment", x = 1.83, xend = 1.97, y = 0.68, yend = 0.685,
+           size = 0.5, colour = "black") +
+  annotate("segment", x = 1.83, xend = 1.97, y = 0.685, yend = 0.69,
+           size = 0.5, colour = "black") +
   labs(x = "Reward Available", y = choice.lab) +
   # ggtitle("Negative Emotions") +
   theme_classic() +
@@ -2030,7 +2066,7 @@ plot.full.reward <- ggplot(d.tbt.full, aes(x = reward.c,  y = decision.num, fill
   scale_color_manual(limits=agent.lims, values=agent.cols) +
   scale_linetype_manual(limits=agent.lims, values=agent.lines) +
   scale_x_continuous(breaks = c(2,3,4)) + 
-  coord_cartesian(ylim = c(0.7,0.91)) +  
+  coord_cartesian(ylim = c(0.68,0.91), xlim = c(2,4), clip = "off") +
   labs(x = "Reward Available", y = choice.lab) +
   # ggtitle("Full sample") +
   theme_classic() +
@@ -2038,8 +2074,15 @@ plot.full.reward <- ggplot(d.tbt.full, aes(x = reward.c,  y = decision.num, fill
   theme(legend.title = element_blank())
 
 plot.full.reward.country <- plot.full.reward  + 
-  coord_cartesian(ylim = c(0.68,0.95)) +
-  facet_wrap("country")
+  coord_cartesian(ylim = c(0.68,0.95), xlim = c(2,4), clip = "off") +
+  facet_wrap("country") +
+  geom_segment(data = data.frame(country = c("Bulgaria", "Sweden")), aes(x = 1.83, xend = 1.97, y = 0.68, yend = 0.685), inherit.aes = FALSE) +
+  geom_segment(data = data.frame(country = c("Bulgaria", "Sweden")), aes(x = 1.83, xend = 1.97, y = 0.685, yend = 0.69), inherit.aes = FALSE)
+
+  # annotate("segment", x = 1.83, xend = 1.97, y = 0.68, yend = 0.685,
+  #          size = 0.3, colour = "black") +
+  # annotate("segment", x = 1.83, xend = 1.97, y = 0.685, yend = 0.69,
+  #          size = 0.3, colour = "black") 
 
 # print(plot.full.reward.country)
 
@@ -2172,7 +2215,7 @@ plot.inter.k.sub <- ggplot(d.mod.exp, aes(x = intername,  y = k_sub, fill = inte
   scale_colour_manual(limits = d.ag.full.diff.av$intername, values = d.ag.full.diff.av$colours, aesthetics = c("colour", "fill")) +
   scale_linewidth_manual(limits = d.ag.full.diff.av$intername, values = c(rep.int(1.5,11))) +
   geom_hline(yintercept = 0, linetype="dashed") +
-  labs(y = paste0("Decreased ", k.symbol, " for<br>climate vs. food")) +
+  labs(y = paste0("Decreased *\u039A*<br>for climate vs. food")) +
   theme_classic() +
   paper.theme +
   theme(legend.position = "none",
@@ -2256,7 +2299,11 @@ plot.k.ami <- ggplot(d.mod.full, aes(x = AMI_total, y = k, colour = agent, fill 
   geom_smooth(method = "lm", formula = y ~ x, alpha = 0.3, linewidth = 0.75) + 
   scale_x_continuous(name = ami.lab, position = "top") +
   scale_y_continuous(name = k.lab, trans = "reverse") +
-  coord_cartesian(ylim = c(0.45, 0.2)) +
+  coord_cartesian(ylim = c(0.45, 0.18), xlim = c(0,4), clip = "off") +
+  annotate("segment", x = -0.4, xend = 0, y = 0.18, yend = 0.185,
+           size = 0.5, colour = "black") +
+  annotate("segment", x = -0.4, xend = 0, y = 0.185, yend = 0.19,
+           size = 0.5, colour = "black") +
   scale_fill_manual(limits=agent.lims, values=agent.fills, name = NULL) +
   scale_color_manual(limits=agent.lims, values=agent.cols, name = NULL) +
   scale_linetype_manual(limits=agent.lims, values=agent.lines, name=NULL) +
@@ -2280,7 +2327,11 @@ plot.k.nasa <- ggplot(d.mod.full, aes(x = nasa_hard, y = k, colour = agent, fill
   geom_smooth(method = "lm", formula = y ~ x, alpha = 0.3, linewidth = 0.75) + 
   scale_x_continuous(name = nasa.lab, position = "top") +
   scale_y_continuous(name = k.lab, trans = "reverse") +
-  coord_cartesian(ylim = c(0.45, 0.2)) +
+  coord_cartesian(ylim = c(0.45, 0.18), xlim = c(0,100), clip = "off") +
+  annotate("segment", x = -10, xend = 0, y = 0.18, yend = 0.185,
+           size = 0.5, colour = "black") +
+  annotate("segment", x = -10, xend = 0, y = 0.185, yend = 0.19,
+           size = 0.5, colour = "black") +
   scale_fill_manual(limits=agent.lims, values=agent.fills, name = NULL) +
   scale_color_manual(limits=agent.lims, values=agent.cols, name = NULL) +
   scale_linetype_manual(limits=agent.lims, values=agent.lines, name=NULL) +
@@ -2304,7 +2355,11 @@ plot.k.wept <- ggplot(d.mod.full, aes(x = wept, y = k, colour = agent, fill = ag
   geom_smooth(method = "lm", formula = y ~ x, alpha = 0.3, linewidth = 0.75) + 
   scale_x_continuous(name = wept.lab, position = "top") +
   scale_y_continuous(name = k.lab, trans = "reverse") +
-  coord_cartesian(ylim = c(0.45, 0.2)) +
+  coord_cartesian(ylim = c(0.45, 0.18), xlim = c(0,8), clip = "off") +
+  annotate("segment", x = -0.8, xend = 0, y = 0.18, yend = 0.185,
+           size = 0.5, colour = "black") +
+  annotate("segment", x = -0.8, xend = 0, y = 0.185, yend = 0.19,
+           size = 0.5, colour = "black") +
   scale_fill_manual(limits=agent.lims, values=agent.fills, name = NULL) +
   scale_color_manual(limits=agent.lims, values=agent.cols, name = NULL) +
   scale_linetype_manual(limits=agent.lims, values=agent.lines, name=NULL) +
@@ -2331,7 +2386,11 @@ plot.k.policy <- ggplot(d.mod.full, aes(x = policy, y = k, colour = agent, fill 
   geom_smooth(method = "lm", formula = y ~ x, alpha = 0.3, linewidth = 0.75) + 
   scale_x_continuous(name = policy.lab, position = "top") +
   scale_y_continuous(name = k.lab, trans = "reverse") +
-  coord_cartesian(ylim = c(0.45, 0.2)) +
+  coord_cartesian(ylim = c(0.45, 0.18), xlim = c(0,100), clip = "off") +
+  annotate("segment", x = -10, xend = 0, y = 0.18, yend = 0.185,
+           size = 0.5, colour = "black") +
+  annotate("segment", x = -10, xend = 0, y = 0.185, yend = 0.19,
+           size = 0.5, colour = "black") +
   scale_fill_manual(limits=agent.lims, values=agent.fills, name = NULL) +
   scale_color_manual(limits=agent.lims, values=agent.cols, name = NULL) +
   scale_linetype_manual(limits=agent.lims, values=agent.lines, name=NULL) +
@@ -2352,7 +2411,11 @@ plot.k.belief <- ggplot(d.mod.full, aes(x = belief, y = k, colour = agent, fill 
   geom_smooth(method = "lm", formula = y ~ x, alpha = 0.3, linewidth = 0.75) + 
   scale_x_continuous(name = belief.lab, position = "top") +
   scale_y_continuous(name = k.lab, trans = "reverse") +
-  coord_cartesian(ylim = c(0.45, 0.2)) +
+  coord_cartesian(ylim = c(0.45, 0.18), xlim = c(0,100), clip = "off") +
+  annotate("segment", x = -10, xend = 0, y = 0.18, yend = 0.185,
+           size = 0.5, colour = "black") +
+  annotate("segment", x = -10, xend = 0, y = 0.185, yend = 0.19,
+           size = 0.5, colour = "black") +
   scale_fill_manual(limits=agent.lims, values=agent.fills, name = NULL)+
   scale_linetype_manual(limits=agent.lims, values=agent.lines, name=NULL) +
   scale_color_manual(limits=agent.lims, values=agent.cols, name = NULL) +
@@ -2434,14 +2497,14 @@ ml.plot <- ggplot(data = df.pr, aes(x=Simulated, y=Recovered, fill=HCorr)) +
                                ticks.colour = 'black', ticks.linewidth = 0.5,  
                                draw.ulim = FALSE, draw.llim = FALSE, override.aes = list(limits = c(1,0)))) +
   scale_x_continuous(breaks = c(1,2,3),
-                     labels = c(paste0("*\u039A*","<sub>food</sub>"), # rename models with k and beta symbols
-                                paste0("*\u039A*","<sub>climate</sub>"),
+                     labels = c(paste0("*\u039A* ","<sub>food</sub>"), # rename models with k and beta symbols
+                                paste0("*\u039A* ","<sub>climate</sub>"),
                                 paste0("*\u03B2*"))) +
   scale_y_continuous(breaks = c(1,2,3),
-                     labels = c(paste0("*\u039A*","<sub>food</sub>"), # rename models with k and beta symbols
-                                paste0("*\u039A*","<sub>climate</sub>"),
+                     labels = c(paste0("*\u039A* ","<sub>food</sub>"), # rename models with k and beta symbols
+                                paste0("*\u039A* ","<sub>climate</sub>"),
                                 paste0("*\u03B2*"))) +
-  theme_classic() + 
+  theme_classic() +
   theme(axis.text.x = element_markdown(size = axtext),
         axis.text.y = element_markdown(size = axtext, angle = 90, hjust = 0.5), 
         axis.title = element_text(size = axtitle), 
@@ -2520,7 +2583,7 @@ reward OR=`r format(round(r.full.choice$Coefficient[r.full.choice$Parameter == "
 
 ### Figure 2:
 
-```{r choice-figures, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=5, fig.width=10, cache=TRUE}
+```{r choice-figures, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=5, fig.width=10}
 
 plot.control.leg <- get_legend(plot.control.effort)
 plot.control.leg <- cowplot::plot_grid(NA, plot.control.leg, NA, nrow = 1, rel_widths = c(0.47,1,0.78))
@@ -2538,7 +2601,11 @@ control.title <- ggdraw() +
 
 plot.control.eff.rew <- cowplot::plot_grid(control.title, plot.control.eff.rew, nrow=2, rel_heights = c(0.2,1))
 
+if (saveplots == 1) {tiff("plots/Fig2.tiff", units="in", res = 300, width = 10, height = 5)}
+
 print(plot.control.eff.rew)
+
+if (saveplots == 1) {dev.off()}
 
 ```
 **Figure 2. Effort, reward, and cause determine choices to exert effort for the climate and food charities in the Pro-Environmental Effort Task (PEET) (a)** Participants in the control group (n=283), who did not experience a pro-environmental intervention, were more willing to choose to exert physical effort for rewards when the level of effort required was lower. **(b)** Willingness to work was also higher when the reward available was larger. **(c)** Control participants were more willing to choose work to help the food charity compared to the climate charity. Asterisks between food and climate represent a significant effect (p<0.05) of cause in the GLMM of choices.
@@ -2592,9 +2659,13 @@ Table S4 for full results and see Supplementary Results & Table S5 for control a
 
 ### Figure 3
 
-```{r inter-choice-figures, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=6, fig.width=6, cache=TRUE}
+```{r inter-choice-figures, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=6, fig.width=6}
+
+if (saveplots == 1) {tiff("plots/Fig3.tiff", units="in", res = 300, width = 6, height = 6)}
 
 print(plot.inter.agent.sub)
+
+if (saveplots == 1) {dev.off()}
 
 ```
 **Figure 3. Positive impact of interventions on willingness to exert effort to help the climate relative to the food charity.** Comparing choices for each intervention against the control group showed robust evidence that Psychological Distance, System Justification, and Negative Emotions interventions significantly increased relative willingness to work for the climate. There was also some evidence to support the effectiveness of the intervention based on Pluralistic Ignorance. Values plotted are the difference between each intervention and the control group (vertical line at zero) in choices to work for the climate – choices to work for the food charity. Significance was tested through cause (climate / food) by intervention (vs. control) interactions in GLMMs. Asterisks and solid lines show interventions with significant interaction effects that are robust across all three control models (for age and gender, time on the survey before the PEET, and pages completed in the WEPT). Dashed lines show interventions with a significant effect in the main model or at least one control model. Dotted lines are interventions that do not significantly interact with the cause (climate / food) in any model.
@@ -2656,15 +2727,19 @@ In summary, computational modelling revealed specific interventions significantl
 
 ### Figure 4
 
-```{r inter-mod-figures, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=9.5, fig.width=9, cache=TRUE}
+```{r inter-mod-figures, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=9.5, fig.width=9}
 
-# intervention.plot <- cowplot::plot_grid(plot.inter.k.sub, NULL, plot.inter.beta.sub + theme(plot.background = element_rect(colour = "transparent")), ncol = 3, axis = "b", rel_widths = c(1.8,0.05,1.05), labels = c("c", "", "d"), label_x = c(0,0,-0.05))
-# 
-# mi.pr.plot <- cowplot::plot_grid(bm.plot, ml.plot, ncol = 2, axis = "tb", labels = c("a", "b"), align = "h", rel_widths = c(1.05,1))
-# 
-# model.plot <- cowplot::plot_grid(mi.pr.plot, intervention.plot, rel_heights = c(0.55,1), nrow = 2)
-# 
-# print(model.plot)
+intervention.plot <- cowplot::plot_grid(plot.inter.k.sub, NULL, plot.inter.beta.sub + theme(plot.background = element_rect(colour = "transparent")), ncol = 3, axis = "b", rel_widths = c(1.8,0.05,1.05), labels = c("c", "", "d"), label_x = c(0,0,-0.05))
+
+mi.pr.plot <- cowplot::plot_grid(bm.plot, ml.plot, ncol = 2, axis = "tb", labels = c("a", "b"), align = "h", rel_widths = c(1.05,1))
+
+model.plot <- cowplot::plot_grid(mi.pr.plot, intervention.plot, rel_heights = c(0.55,1), nrow = 2)
+
+if (saveplots == 1) {tiff("plots/Fig4.tiff", units="in", res = 300, width = 9, height = 9.5)}
+
+print(model.plot)
+
+if (saveplots == 1) {dev.off()}
 
 ```
 **Figure 4. Computational modelling reveals interventions increase relative motivation to help the climate. We fit six computational models of effort discounting to the choice data. (a)** Model identifiability analysis shows a strong diagonal across the winning model confusion matrix, meaning the models can be accurately identified and the model comparison process is robust. **(b)** Strong parameter recovery for the best fitting, 2*Κ*1*\u03B2*-linear model is shown by the high correlations on the diagonal between simulated and recovered parameter values and low off-diagonal correlations. **(c)** Comparing discounting (*Κ*) parameters between causes for each intervention relative to the control group identifies four interventions robustly increase motivation (decrease discounting) for the climate vs. food: Psychological Distance, System Justification, Future-Self Continuity and Pluralistic Ignorance. Values plotted are the mean difference between each intervention and the control group (vertical line at zero) in motivation for the climate – motivation for the food charity. **(d)** In contrast, comparing decision noise (*\u03B2*) for each intervention to the control group, only the Dynamic Social Norms intervention showed any evidence of an intervention effect, and this was not robust across control analyses. Values are the mean *\u03B2* parameter in each condition with the mean for the control group shown with a vertical line. Asterisks and solid lines show interventions with significant effects (GLMM cause\*intervention for *Κ*, LMM intervention main effect for *\u03B2*) robust across all three control models (age and gender, time on the survey before the PEET, and WEPT pages completed). Dashed lines are interventions with a significant effect in at least one model (main or control). Dotted lines are interventions with no significant effects.
@@ -2736,7 +2811,7 @@ Together these results highlight the specificity of variability in motivation to
 
 ### Figure 5
 
-```{r inddiffs-k-figures, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=9, fig.width=10, cache=TRUE}
+```{r inddiffs-k-figures, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=9, fig.width=10}
 
 plot.k.ind.diffs <- cowplot::plot_grid(k.label, plot.k.belief, 
                                         # k.label, 
@@ -2751,7 +2826,11 @@ plot.k.ind.diffs <- cowplot::plot_grid(k.label, plot.k.belief,
                                        rel_widths = c(0.15,1,1,1),
                                        axis = "rltb", align = "h", labels = c("", "a", "c", "e", "", "b", "d", ""))
 
+if (saveplots == 1) {tiff("plots/Fig5.tiff", units="in", res = 300, width = 10, height = 9)}
+
 print(plot.k.ind.diffs)
+
+if (saveplots == 1) {dev.off()}
 
 ```
 **Figure 5. Individual differences in pro-environmental motivation are specifically associated with climate beliefs and policy support.** Motivation to help the climate, captured in participants’ discounting *K* parameters, was associated with **(a)** beliefs that climate-change is humman-made 
@@ -2803,16 +2882,16 @@ with no significant difference between these correlations
 
 # Supplement
 
-```{r inter-figures, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=12, fig.width=6, cache=TRUE}
+```{r inter-figures, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=12, fig.width=6}
 
-plot.country <- cowplot::plot_grid(plot.full.effort.country, legend.fc.long, plot.full.reward.country + theme(legend.position = "none"), nrow = 3, align = "lrbt", labels = "auto", rel_heights = c(1,0.15,1))
+plot.country <- cowplot::plot_grid(plot.full.effort.country, legend.fc.long, plot.full.reward.country + theme(legend.position = "none"), nrow = 3, align = "lrbt", labels = c("a","","b"), rel_heights = c(1,0.15,1))
 
 print(plot.country)
 
 ```
 **Figure S1.**
 
-```{r choice-inter-figures, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=9, fig.width=10, cache=TRUE}
+```{r choice-inter-figures, echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.height=9, fig.width=10}
 
 plot.inters.eff.rew <- cowplot::plot_grid(choice.label,
                                           NA,
@@ -2952,5 +3031,112 @@ kable(r.inter.beta,
       digits = 2,
       align = c('l',rep('c',(ncol(r.inter.beta)-1))),
       caption = "GLMM of betas in full sample - interventions") %>% kable_styling()
+
+```
+
+## Create source data
+
+```{r eval=FALSE, echo=FALSE, warning=FALSE, message=FALSE}
+
+# Fig. 1a
+
+df.1a <- df.world
+
+# Fig.2a
+
+df.2a <- d.tbt.control %>% select(c("ui", "effort.c", "decision.num", "agent"))
+
+# Fig.2b
+
+df.2b <- d.tbt.control %>% select(c("ui", "reward.c", "decision.num", "agent"))
+
+# Fig.2c
+
+df.2c <- d.agent.control
+
+# Fig. 3
+
+df.3 <- d.ag.exp.wide %>% select("ui", "intername", "choice_sub")
+
+# Fig. 4a
+
+df.4a <- df.mi %>% select("Simulated", "Estimated", "best")
+
+# Fig. 4b
+
+df.4b <- df.pr %>%  select(c("Simulated", "Recovered", "HCorr")) %>% 
+  rename(R = HCorr)
+ 
+# Fig. 4c
+
+df.4c <- d.mod.exp %>% select("ui", "intername", "k_sub")
+  
+# Fig. 4d
+
+df.4d <- d.mod.full.wide %>% subset(intername != "Control") %>% select("ui", "intername", "beta")
+
+# Fig. 5a
+
+df.5a <- d.mod.full %>% select("ui", "belief", "k", "agent")
+
+# Fig. 5b
+
+df.5b <- d.mod.full %>% select("ui", "policy", "k", "agent")
+
+# Fig. 5c
+
+df.5c <- d.mod.full %>% select("ui", "AMI_total", "k", "agent")
+
+# Fig. 5d
+
+df.5d <- d.mod.full %>% select("ui", "nasa_hard", "k", "agent")
+
+# Fig. 5e
+
+df.5e <- d.mod.full %>% select("ui", "wept", "k", "agent")
+
+# Fig. S1a
+
+df.S1a <- d.tbt.full %>% select(c("ui", "effort.c", "decision.num", "agent", "country"))
+
+# Fig. S1b
+
+df.S1b <- d.tbt.full %>% select(c("ui", "reward.c", "decision.num", "agent", "country"))
+
+# Fig. S2a
+
+df.S2a <- d.tbt.exp %>% subset(intername == "PsychDistance") %>% select(c("ui", "effort.c", "decision.num", "agent"))
+
+# Fig. S2b
+
+df.S2b <- d.tbt.exp %>% subset(intername == "SystemJust") %>% select(c("ui", "effort.c", "decision.num", "agent"))
+
+# Fig. S2c
+
+df.S2c <- d.tbt.exp %>% subset(intername == "NegEmo") %>% select(c("ui", "effort.c", "decision.num", "agent"))
+
+# Fig. S2d
+
+df.S2d <- d.tbt.exp %>% subset(intername == "PsychDistance") %>% select(c("ui", "reward.c", "decision.num", "agent"))
+
+# Fig. S2e
+
+df.S2e <- d.tbt.exp %>% subset(intername == "SystemJust") %>% select(c("ui", "reward.c", "decision.num", "agent"))
+
+# Fig. S2f
+
+df.S2f <- d.tbt.exp %>% subset(intername == "NegEmo") %>% select(c("ui", "reward.c", "decision.num", "agent"))
+
+# Fig. S3
+
+df.S3 <- matrix.sum
+
+# Fig. S4
+
+df.S4 <- matrix.sum
+
+source.data <- list(df.1a, df.2a, df.2b, df.2c, df.3,df.4a, df.4b, df.4c, df.4d, df.5a, df.5b, df.5c, df.5d, df.5e, df.S1a, df.S1b, df.S2a, df.S2b, df.S2c, df.S2d, df.S2e, df.S2f, df.S3, df.S4)
+names(source.data) <- c("Fig1a", "Fig2a", "Fig2b", "Fig2c", "Fig3","Fig4a", "Fig4b", "Fig4c", "Fig4d", "Fig5a", "Fig5b", "Fig5c", "Fig5d", "Fig5e", "FigS1a", "FigS1b", "FigS2a", "FigS2b", "FigS2c", "FigS2d", "FigS2e", "FigS2f", "FigS3", "FigS4")
+writexl::write_xlsx(source.data, "Source_Data.xlsx")
 
 ```

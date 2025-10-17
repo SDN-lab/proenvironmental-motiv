@@ -11,7 +11,9 @@
 
 ### To collect data:
 
-Download Qualtrics qsf
+Download Qualtrics .qsf file from the PEET_task folder: Pro-Environmental_Effort_Task.qsf
+
+After collecting data, use the data_prep_PEET.R file to wrangle the Qualtrics output to a long format dataframe
 
 ### For analysis of the real participant data (i & iii):
 
